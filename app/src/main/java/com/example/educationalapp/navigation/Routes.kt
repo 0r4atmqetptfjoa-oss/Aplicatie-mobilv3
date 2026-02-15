@@ -65,6 +65,13 @@ import kotlinx.serialization.Serializable
 @Serializable object EggSurpriseRoute
 @Serializable object FeedMonsterRoute
 
+// --- PREMIUM MINI-GAMES ---
+@Serializable object ColorMixingRoute
+@Serializable object ShapeTrainRoute
+@Serializable object HabitatRescueRoute
+@Serializable object MusicalPatternRoute
+@Serializable object WeatherDressRoute
+
 // --- WOW GAMES (Individually) ---
 @Serializable object AlphabetAdventureRoute
 @Serializable object NumbersMazeRoute

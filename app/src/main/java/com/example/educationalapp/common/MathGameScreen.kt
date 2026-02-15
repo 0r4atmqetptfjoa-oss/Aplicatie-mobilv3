@@ -29,7 +29,6 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -41,7 +40,7 @@ import androidx.compose.ui.unit.min
 import androidx.compose.ui.zIndex
 import androidx.navigation.NavController
 import com.example.educationalapp.common.PremiumConfetti
-import com.example.educationalapp.utils.AudioHelper
+import com.example.educationalapp.common.LocalSoundManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -125,11 +124,9 @@ class MathGameLogic {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MathGameScreen(navController: NavController, starState: MutableState<Int>) {
-    val context = LocalContext.current
-    val audioHelper = remember { AudioHelper(context) }
+    val soundManager = LocalSoundManager.current
     val haptics = LocalHapticFeedback.current
-    
-    DisposableEffect(Unit) { onDispose { audioHelper.release() } }
+
 
     val gameLogic = remember { MathGameLogic() }
     val scope = rememberCoroutineScope()
@@ -157,9 +154,9 @@ fun MathGameScreen(navController: NavController, starState: MutableState<Int>) {
         
         delay(600) 
         if (levelData.mode == MathGameMode.COUNTING) {
-            audioHelper.playVoice("question_how_many")
+            soundManager.playVoiceByName("question_how_many")
         } else {
-            audioHelper.playVoice("question_total")
+            soundManager.playVoiceByName("question_total")
         }
     }
 
@@ -170,7 +167,7 @@ fun MathGameScreen(navController: NavController, starState: MutableState<Int>) {
             if (buttonsEnabled && !hintActive) {
                 if (System.currentTimeMillis() - lastInteractionTime > 8000) {
                     hintActive = true
-                    audioHelper.playHint() // Sunet subtil de hint
+                    soundManager.playSoundByName("sfx_hint", volume = 0.8f)
                 }
             }
         }
@@ -191,13 +188,13 @@ fun MathGameScreen(navController: NavController, starState: MutableState<Int>) {
             showConfetti = true 
             
             // 1. Sunet magic imediat (SFX)
-            audioHelper.playSfx("sfx_magic_win") 
+            soundManager.playSoundByName("sfx_magic_win")
             
             // 2. Verificăm dacă merită "BRAVO" (2 consecutive)
             if (consecutiveWins >= 2) {
                 scope.launch {
                     delay(400) // Mică pauză să nu acopere sfx-ul complet
-                    audioHelper.playVoice("voice_correct_bravo")
+                    soundManager.playVoiceByName("voice_correct_bravo")
                 }
             }
 
@@ -210,7 +207,7 @@ fun MathGameScreen(navController: NavController, starState: MutableState<Int>) {
                     levelData = gameLogic.generateLevel(currentLevelIndex)
                 } else {
                     // --- FINAL JOC ---
-                    audioHelper.playVoice("voice_level_complete")
+                    soundManager.playVoiceByName("voice_level_complete")
                     isGameOver = true
                 }
             }
@@ -221,12 +218,12 @@ fun MathGameScreen(navController: NavController, starState: MutableState<Int>) {
             mistakesInLevel++
             
             // 1. Sunet Buzz (SFX)
-            audioHelper.playSfx("sfx_wrong_buzz")
+            soundManager.playSoundByName("sfx_wrong_buzz")
             
             // 2. Voce Oops (Voice) - Se aud ambele
             scope.launch {
                 delay(200) 
-                audioHelper.playVoice("voice_wrong_oops")
+                soundManager.playVoiceByName("voice_wrong_oops")
             }
 
             // 3. Hint Logic: Dacă greșește de 2 ori, activăm hint-ul
@@ -266,7 +263,7 @@ fun MathGameScreen(navController: NavController, starState: MutableState<Int>) {
             MathGameOverDialog(
                 score = score,
                 onRestart = {
-                    audioHelper.playClick()
+                    soundManager.playSoundByName("sfx_click", duckDurationMs = 200L)
                     currentLevelIndex = 0
                     score = 0
                     consecutiveWins = 0
@@ -275,7 +272,7 @@ fun MathGameScreen(navController: NavController, starState: MutableState<Int>) {
                     buttonsEnabled = true
                 },
                 onHome = { 
-                    audioHelper.playClick()
+                    soundManager.playSoundByName("sfx_click", duckDurationMs = 200L)
                     navController.popBackStack() 
                 }
             )
@@ -289,7 +286,7 @@ fun MathGameScreen(navController: NavController, starState: MutableState<Int>) {
                 GameHeaderClean(
                     score = score,
                     onBack = { 
-                        audioHelper.playClick()
+                        soundManager.playSoundByName("sfx_click", duckDurationMs = 200L)
                         navController.popBackStack() 
                     },
                     modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().zIndex(10f)
@@ -363,7 +360,7 @@ fun MathGameScreen(navController: NavController, starState: MutableState<Int>) {
                     IconButton(
                         onClick = {
                             if (!hintActive && buttonsEnabled) {
-                                audioHelper.playHint()
+                                soundManager.playSoundByName("sfx_hint", volume = 0.8f)
                                 hintActive = true
                             }
                         },

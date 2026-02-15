@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.educationalapp.R
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -63,7 +64,7 @@ fun CookingGameScreen(
     viewModel: CookingGameViewModel = hiltViewModel(),
     onBack: () -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     
     var showConfetti by remember { mutableStateOf(false) }

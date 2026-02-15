@@ -51,9 +51,8 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.RawResourceDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.educationalapp.R
+import com.example.educationalapp.common.LocalSoundManager
 import com.example.educationalapp.di.SoundManager
-import com.example.educationalapp.di.SoundManagerEntryPoint
-import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -138,12 +137,6 @@ private enum class GamePhase { INTRO, PLAY, REWARD }
 private enum class MascotMood { IDLE, TALK, SAD, CHEER, HINT }
 
 // -------------------- HELPERS --------------------
-
-private fun soundManagerFromApp(context: Context): SoundManager {
-    val app = context.applicationContext
-    val ep = EntryPointAccessors.fromApplication(app, SoundManagerEntryPoint::class.java)
-    return ep.soundManager()
-}
 
 private fun loadRaw(context: Context, name: String): Int =
     context.resources.getIdentifier(name, "raw", context.packageName)
@@ -435,7 +428,7 @@ fun AlphabetAdventureGame(onBack: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
 
     // --- MANAGERS ---
-    val soundManager = remember { soundManagerFromApp(context) }
+    val soundManager = LocalSoundManager.current
     val bgmPlayer = remember { LoopingMusicPlayer(context) }
     val sfxLimiter = remember { SfxLimiter() }
     

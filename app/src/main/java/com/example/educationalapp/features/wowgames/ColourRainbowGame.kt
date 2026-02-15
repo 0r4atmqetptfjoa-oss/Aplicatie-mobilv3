@@ -1,9 +1,5 @@
 package com.example.educationalapp.features.wowgames
 
-import android.content.Context
-import android.media.AudioAttributes
-import android.media.MediaPlayer
-import android.media.SoundPool
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -26,6 +22,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import com.example.educationalapp.common.LocalSoundManager
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.IntSize
@@ -64,84 +61,22 @@ private data class RainbowParticle(
     val maxLife: Float
 )
 
-// -------------------- AUDIO ENGINE --------------------
-class WowAudioEngine(private val context: Context) {
-    private val soundPool: SoundPool
-    private val soundsMap = mutableMapOf<String, Int>()
-    private var bgPlayer: MediaPlayer? = null
-    private var brushStreamId: Int = 0
-
-    init {
-        val attrs = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_GAME)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-        soundPool = SoundPool.Builder().setMaxStreams(10).setAudioAttributes(attrs).build()
-
-        val soundsToLoad = listOf(
-            "sfx_pop_select", "sfx_bubble_pop", 
-            "sfx_paint_brush", 
-            "sfx_magic_win", "sfx_magic_chime", 
-            "vox_intro", "vox_tutorial", "vox_win", "vox_feedback_generic",
-            "vox_color_red", "vox_color_orange", "vox_color_yellow",
-            "vox_color_green", "vox_color_blue", "vox_color_indigo", "vox_color_purple"
-        )
-
-        soundsToLoad.forEach { name ->
-            val resId = context.resources.getIdentifier(name, "raw", context.packageName)
-            if (resId != 0) soundsMap[name] = soundPool.load(context, resId, 1)
-        }
-    }
-
-    fun startMusic() {
-        if (bgPlayer == null) {
-            val resId = context.resources.getIdentifier("bg_music_loop", "raw", context.packageName) 
-            if (resId != 0) {
-                bgPlayer = MediaPlayer.create(context, resId).apply {
-                    isLooping = true
-                    setVolume(0.08f, 0.08f)
-                    start()
-                }
-            }
-        }
-    }
-
-    fun playSfx(name: String, rate: Float = 1f): Int {
-        val soundName = when(name) {
-            "sfx_pop_select" -> if (soundsMap.containsKey("sfx_pop_select")) "sfx_pop_select" else "sfx_bubble_pop"
-            "sfx_magic_win" -> if (soundsMap.containsKey("sfx_magic_win")) "sfx_magic_win" else "sfx_magic_chime"
-            else -> name
-        }
-        val soundId = soundsMap[soundName] ?: return 0
-        return soundPool.play(soundId, 1f, 1f, 1, 0, rate)
-    }
-
-    fun setBrushSound(active: Boolean) {
-        val soundId = soundsMap["sfx_paint_brush"] ?: return
-        if (active) {
-            if (brushStreamId == 0) brushStreamId = soundPool.play(soundId, 1.0f, 1.0f, 1, -1, 1f)
-        } else {
-            if (brushStreamId != 0) {
-                soundPool.stop(brushStreamId)
-                brushStreamId = 0
-            }
-        }
-    }
-
-    fun release() {
-        bgPlayer?.stop()
-        bgPlayer?.release()
-        soundPool.release()
-    }
-}
-
 // -------------------- JOCUL --------------------
 
 @Composable
 fun ColourRainbowGame(onBack: () -> Unit) {
     val context = LocalContext.current
-    val audio = remember { WowAudioEngine(context) }
-    val bandCount = WowRainbowData.size 
+    val soundManager = LocalSoundManager.current
+    val bandCount = WowRainbowData.size
+
+    fun playSfx(name: String, rate: Float = 1f, volume: Float = 1f) {
+        val resolved = when (name) {
+            "sfx_pop_select" -> if (soundManager.rawResId("sfx_pop_select") != 0) "sfx_pop_select" else "sfx_bubble_pop"
+            "sfx_magic_win" -> if (soundManager.rawResId("sfx_magic_win") != 0) "sfx_magic_win" else "sfx_magic_chime"
+            else -> name
+        }
+        soundManager.playSoundByName(resolved, rate = rate, volume = volume, duckMusic = false)
+    }
 
     // State
     var selectedColorIndex by remember { mutableIntStateOf(-1) }
@@ -176,18 +111,39 @@ fun ColourRainbowGame(onBack: () -> Unit) {
 
     // Lifecycle
     DisposableEffect(Unit) {
-        audio.startMusic()
-        audio.playSfx("vox_intro")
-        onDispose { audio.release() }
+        soundManager.enterGameMode(
+            soundManager.rawResId("bg_music_loop").takeIf { it != 0 },
+            autoPlay = true,
+            startVolume = 0.08f
+        )
+        soundManager.playVoiceByName("vox_intro")
+        onDispose { soundManager.exitGameMode() }
     }
 
     LaunchedEffect(Unit) {
+        // Preload main sounds to avoid lag on first interaction
+        soundManager.loadSoundsByName(
+            listOf(
+                "sfx_pop_select", "sfx_bubble_pop", "sfx_paint_brush",
+                "sfx_magic_win", "sfx_magic_chime",
+                "vox_intro", "vox_tutorial", "vox_win", "vox_feedback_generic",
+                "vox_color_red", "vox_color_orange", "vox_color_yellow",
+                "vox_color_green", "vox_color_blue", "vox_color_indigo", "vox_color_purple"
+            )
+        )
+
         delay(3500)
-        if (selectedColorIndex == -1) audio.playSfx("vox_tutorial")
+        if (selectedColorIndex == -1) soundManager.playVoiceByName("vox_tutorial")
     }
 
+    // Brush ambience while dragging (no looping stream needed)
     LaunchedEffect(isDragging, isWin) {
-        if (isWin) audio.setBrushSound(false) else audio.setBrushSound(isDragging)
+        if (!isWin && isDragging) {
+            while (isActive) {
+                playSfx("sfx_paint_brush", rate = 1f, volume = 0.85f)
+                delay(260)
+            }
+        }
     }
 
     // GAME LOOP
@@ -282,13 +238,13 @@ fun ColourRainbowGame(onBack: () -> Unit) {
                 if (newP >= 0.97f && !bandCompleted[rawIndex]) {
                     bandCompleted[rawIndex] = true
                     bandProgress[rawIndex] = 1f
-                    audio.playSfx("sfx_magic_win", 1.2f)
-                    audio.playSfx("vox_feedback_generic")
+                    playSfx("sfx_magic_win", rate = 1.2f)
+                    soundManager.playVoiceByName("vox_feedback_generic")
 
                     if (bandCompleted.all { it }) {
                         isWin = true
                         isDragging = false
-                        audio.playSfx("vox_win")
+                        soundManager.playVoiceByName("vox_win")
                         repeat(250) {
                             particles.add(RainbowParticle(
                                 x = canvasSize.width / 2f, y = canvasSize.height / 2f,
@@ -427,8 +383,8 @@ fun ColourRainbowGame(onBack: () -> Unit) {
                                     if (selectedColorIndex != index) {
                                         lastInteractionTime = System.currentTimeMillis()
                                         selectedColorIndex = index
-                                        audio.playSfx("sfx_pop_select")
-                                        audio.playSfx(data.audioName)
+                                        playSfx("sfx_pop_select")
+                                        soundManager.playVoiceByName(data.audioName)
                                     }
                                 }
                             },

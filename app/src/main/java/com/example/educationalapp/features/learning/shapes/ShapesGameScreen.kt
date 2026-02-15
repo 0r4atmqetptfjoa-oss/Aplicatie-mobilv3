@@ -1,12 +1,7 @@
 package com.example.educationalapp.features.learning.shapes
 
-import android.content.Context
 import android.graphics.Path as AndroidPath
 import android.graphics.PathMeasure
-import android.media.AudioAttributes
-import android.media.MediaPlayer
-import android.media.SoundPool
-import android.util.Log
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -38,6 +33,7 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import com.example.educationalapp.common.LocalSoundManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -45,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.educationalapp.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -55,185 +52,6 @@ import kotlin.math.sin
 
 // NOTE: unele fișiere încărcate anterior în conversație pot expira. Dacă îți cer să le revăd,
 // te rog reîncarcă fișierul/fisierele respective.
-
-// --- AUDIO ENGINE ---
-// SFX (ding/buzz/chalk) prin SoundPool, iar VOCILE prin MediaPlayer (ca să NU se taie fraza și să putem aștepta finalul).
-class ShapesAudioEngine(private val context: Context) {
-    private val TAG = "ShapesAudioEngine"
-
-    private fun canon(name: String): String = name.substringBeforeLast('.')
-
-    private val soundPool: SoundPool
-    private val sfxMap = mutableMapOf<String, Int>()
-    private val voiceResMap = mutableMapOf<String, Int>() // raw resId pentru vocile (MediaPlayer)
-
-    private var bgPlayer: MediaPlayer? = null
-    private val bgBaseVol = 0.06f
-    private val bgDuckedVol = 0.03f
-
-    private var voicePlayer: MediaPlayer? = null
-    private var voiceSessionId: Int = 0
-    private var voiceDone = kotlinx.coroutines.CompletableDeferred<Unit>().apply { complete(Unit) }
-
-    init {
-        val attrs = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_GAME)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-
-        soundPool = SoundPool.Builder()
-            .setMaxStreams(6)
-            .setAudioAttributes(attrs)
-            .build()
-
-        val soundsToRegister = listOf(
-            // SFX
-            "sfx_correct_ding",
-            "sfx_wrong_buzz",
-            "sfx_chalk_draw",
-
-            // VOX
-            "vox_shapes_intro",
-            "vox_error_try",
-            "vox_quest_square", "vox_ans_square",
-            "vox_quest_circle", "vox_ans_circle",
-            "vox_quest_triangle", "vox_ans_triangle",
-            "vox_quest_star", "vox_ans_star",
-            "vox_quest_rectangle", "vox_ans_rectangle",
-            "vox_quest_heart", "vox_ans_heart"
-        )
-
-        soundsToRegister.forEach { rawName ->
-            val name = canon(rawName)
-            val resId = context.resources.getIdentifier(name, "raw", context.packageName)
-            if (resId == 0) {
-                Log.w(TAG, "Missing raw sound: $name")
-                return@forEach
-            }
-
-            if (name.startsWith("sfx_")) {
-                sfxMap[name] = soundPool.load(context, resId, 1)
-            } else if (name.startsWith("vox_")) {
-                voiceResMap[name] = resId
-            }
-        }
-    }
-
-    fun startMusic() {
-        val resId = context.resources.getIdentifier("bg_music_loop", "raw", context.packageName)
-        if (resId != 0) {
-            bgPlayer = MediaPlayer.create(context, resId).apply {
-                isLooping = true
-                setVolume(bgBaseVol, bgBaseVol)
-                start()
-            }
-        }
-    }
-
-    private fun setBgVolume(v: Float) {
-        bgPlayer?.setVolume(v, v)
-    }
-
-    fun playSfx(name: String, vol: Float = 1f) {
-        val key = canon(name)
-        sfxMap[key]?.let { soundPool.play(it, vol, vol, 1, 0, 1f) }
-    }
-
-    /**
-     * Pornește o voce. Oprește orice voce curentă (de ex. întrebarea) ca să poată începe feedback-ul.
-     * Întoarce un id de sesiune (util dacă vrei să aștepți sesiunea curentă).
-     */
-    fun playVoice(name: String): Int {
-        val key = canon(name)
-        val resId = voiceResMap[key] ?: run {
-            Log.w(TAG, "Missing voice res: $key")
-            return -1
-        }
-
-        stopVoice()
-
-        voiceSessionId += 1
-        val session = voiceSessionId
-
-        voiceDone = kotlinx.coroutines.CompletableDeferred()
-
-        // Duck muzica cât timp vorbește (mai premium, vocea se aude clar)
-        setBgVolume(bgDuckedVol)
-
-        voicePlayer = MediaPlayer.create(context, resId).apply {
-            setVolume(1.0f, 1.0f)
-            setOnCompletionListener {
-                if (!voiceDone.isCompleted) voiceDone.complete(Unit)
-                cleanupVoice(session)
-            }
-            setOnErrorListener { _, _, _ ->
-                if (!voiceDone.isCompleted) voiceDone.complete(Unit)
-                cleanupVoice(session)
-                true
-            }
-            start()
-        }
-
-        return session
-    }
-
-    private fun cleanupVoice(session: Int) {
-        // Curăță doar dacă e sesiunea curentă
-        if (session == voiceSessionId) {
-            try {
-                voicePlayer?.release()
-            } catch (_: Throwable) {}
-            voicePlayer = null
-            setBgVolume(bgBaseVol)
-        }
-    }
-
-    fun stopVoice() {
-        try {
-            voicePlayer?.stop()
-        } catch (_: Throwable) {}
-        try {
-            voicePlayer?.release()
-        } catch (_: Throwable) {}
-        voicePlayer = null
-        if (!voiceDone.isCompleted) voiceDone.complete(Unit)
-        setBgVolume(bgBaseVol)
-    }
-
-    /**
-     * Așteaptă până când NU mai este nicio voce în redare.
-     * Important: e robust dacă între timp începe o altă voce (loop până chiar se termină).
-     */
-    suspend fun awaitVoiceIdle() {
-        while (true) {
-            val player = voicePlayer
-            if (player == null) return
-
-            val session = voiceSessionId
-            val done = voiceDone
-            try {
-                done.await()
-            } catch (_: Throwable) {
-                // ignore
-            }
-
-            // Dacă între timp a început altă voce, continuăm să așteptăm.
-            if (voicePlayer == null) return
-            if (voiceSessionId == session) {
-                // ar trebui să fie null, dar ca siguranță:
-                return
-            }
-        }
-    }
-
-    fun release() {
-        stopVoice()
-        bgPlayer?.stop()
-        bgPlayer?.release()
-        bgPlayer = null
-        soundPool.release()
-    }
-}
 
 // --- TABLET SPECS (auto-calibrate din PNG-urile tale) ---
 private data class TabletSpec(
@@ -279,9 +97,9 @@ fun ShapesGameScreen(
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    val audio = remember { ShapesAudioEngine(context) }
+    val soundManager = LocalSoundManager.current
     var isFirstRound by remember { mutableStateOf(true) }
 
     val robotImageRes = when (uiState.gameState) {
@@ -295,20 +113,20 @@ fun ShapesGameScreen(
 
     // 1) Start / stop audio
     DisposableEffect(Unit) {
-        audio.startMusic()
-        onDispose { audio.release() }
+        soundManager.enterGameMode(soundManager.rawResId("bg_music_loop").takeIf { it != 0 }, autoPlay = true, startVolume = 0.06f)
+        onDispose { soundManager.exitGameMode() }
     }
 
     // 2) Când se schimbă forma țintă, desenăm pe tablă + întrebarea
         LaunchedEffect(uiState.targetShape) {
         // IMPORTANT: nu pornim o întrebare nouă cât timp rulează încă vocea de feedback (ca să NU se taie fraza).
-        audio.awaitVoiceIdle()
+        soundManager.awaitVoiceIdle()
 
         if (isFirstRound) {
             delay(350)
-            audio.playVoice("vox_shapes_intro")
+            soundManager.playVoiceByName("vox_shapes_intro")
             // așteptăm intro-ul complet (fără delay „hardcodate”)
-            audio.awaitVoiceIdle()
+            soundManager.awaitVoiceIdle()
             delay(250)
             isFirstRound = false
         } else {
@@ -316,12 +134,12 @@ fun ShapesGameScreen(
         }
 
         // încă o dată, ca siguranță (dacă s-a declanșat altă voce între timp)
-        audio.awaitVoiceIdle()
+        soundManager.awaitVoiceIdle()
 
         if (uiState.gameState == GameState.WAITING_INPUT) {
             // reset + desen (vizual) + sfx chalk (audio)
             drawProgress.snapTo(0f)
-            audio.playSfx("sfx_chalk_draw", vol = 0.35f)
+            soundManager.playSoundByName("sfx_chalk_draw", volume = 0.35f)
 
             // desen animat
             drawProgress.animateTo(
@@ -332,7 +150,7 @@ fun ShapesGameScreen(
             delay(120)
             // dacă userul a apăsat foarte rapid și am intrat în feedback, nu mai pornim întrebarea
             if (uiState.gameState == GameState.WAITING_INPUT) {
-                audio.playVoice(uiState.targetItem.audioQuestRes)
+                soundManager.playVoiceByName(uiState.targetItem.audioQuestRes)
             }
         }
     }
@@ -342,15 +160,15 @@ fun ShapesGameScreen(
         when (uiState.gameState) {
             GameState.CORRECT_FEEDBACK -> {
                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                audio.playSfx("sfx_correct_ding", vol = 1f)
+                soundManager.playSoundByName("sfx_correct_ding", volume = 1f)
                 delay(450)
-                audio.playVoice(uiState.targetItem.audioWinRes)
+                soundManager.playVoiceByName(uiState.targetItem.audioWinRes)
             }
             GameState.WRONG_FEEDBACK -> {
                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
-                audio.playSfx("sfx_wrong_buzz", vol = 1f)
+                soundManager.playSoundByName("sfx_wrong_buzz", volume = 1f)
                 delay(450)
-                audio.playVoice("vox_error_try")
+                soundManager.playVoiceByName("vox_error_try")
             }
             else -> Unit
         }

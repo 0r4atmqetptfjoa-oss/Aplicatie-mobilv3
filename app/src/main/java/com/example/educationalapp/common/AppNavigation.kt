@@ -7,11 +7,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
@@ -90,11 +91,11 @@ import com.example.educationalapp.minigames.weatherdress.WeatherDressUpGameViewM
 fun AppNavigation(viewModel: MainViewModel) {
     val navController = rememberNavController()
 
-    val starCount by viewModel.starCount.collectAsState()
-    val soundEnabled by viewModel.soundEnabled.collectAsState()
-    val musicEnabled by viewModel.musicEnabled.collectAsState()
-    val hardModeEnabled by viewModel.hardModeEnabled.collectAsState()
-    val hasFullVersion by viewModel.hasFullVersion.collectAsState()
+    val starCount by viewModel.starCount.collectAsStateWithLifecycle()
+    val soundEnabled by viewModel.soundEnabled.collectAsStateWithLifecycle()
+    val musicEnabled by viewModel.musicEnabled.collectAsStateWithLifecycle()
+    val hardModeEnabled by viewModel.hardModeEnabled.collectAsStateWithLifecycle()
+    val hasFullVersion by viewModel.hasFullVersion.collectAsStateWithLifecycle()
 
     val starState = rememberSaveable { mutableIntStateOf(starCount) }
     LaunchedEffect(starCount) {
@@ -168,25 +169,25 @@ fun AppNavigation(viewModel: MainViewModel) {
             composable<EggSurpriseRoute> { EggGameScreen(onBack = { navController.backToGamesMenu() }) }
             composable<FeedMonsterRoute> { FeedGameScreen(onBack = { navController.backToGamesMenu() }) }
 
-            // New premium mini‑games (string routes)
-            composable("colorMixing") {
-                val vm = remember { ColorMixingGameViewModel() }
+            // New premium mini‑games (type-safe routes)
+            composable<ColorMixingRoute> {
+                val vm: ColorMixingGameViewModel = viewModel()
                 ColorMixingGameScreen(viewModel = vm)
             }
-            composable("shapeTrain") {
-                val vm = remember { ShapeTrainGameViewModel() }
+            composable<ShapeTrainRoute> {
+                val vm: ShapeTrainGameViewModel = viewModel()
                 ShapeTrainGameScreen(viewModel = vm)
             }
-            composable("habitatRescue") {
-                val vm = remember { HabitatRescueGameViewModel() }
+            composable<HabitatRescueRoute> {
+                val vm: HabitatRescueGameViewModel = viewModel()
                 HabitatRescueGameScreen(viewModel = vm)
             }
-            composable("musicalPattern") {
-                val vm = remember { MusicalPatternGameViewModel() }
+            composable<MusicalPatternRoute> {
+                val vm: MusicalPatternGameViewModel = viewModel()
                 MusicalPatternGameScreen(viewModel = vm)
             }
-            composable("weatherDress") {
-                val vm = remember { WeatherDressUpGameViewModel() }
+            composable<WeatherDressRoute> {
+                val vm: WeatherDressUpGameViewModel = viewModel()
                 WeatherDressUpGameScreen(viewModel = vm)
             }
 
@@ -209,10 +210,10 @@ fun AppNavigation(viewModel: MainViewModel) {
             composable<SaxofonSoundsRoute> { InstrumentSoundScreen(definition = SaxophoneDefinition, navController = navController) }
             composable<TobeSoundsRoute> { InstrumentSoundScreen(definition = DrumsDefinition, navController = navController) }
 
-            composable<Song1Route> { backStackEntry -> SongPlayerScreen(navController, backStackEntry, starState) }
-            composable<Song2Route> { backStackEntry -> SongPlayerScreen(navController, backStackEntry, starState) }
-            composable<Song3Route> { backStackEntry -> SongPlayerScreen(navController, backStackEntry, starState) }
-            composable<Song4Route> { backStackEntry -> SongPlayerScreen(navController, backStackEntry, starState) }
+            composable<Song1Route> { SongPlayerScreen(navController = navController, backStackEntry = it, starState = starState) }
+            composable<Song2Route> { SongPlayerScreen(navController = navController, backStackEntry = it, starState = starState) }
+            composable<Song3Route> { SongPlayerScreen(navController = navController, backStackEntry = it, starState = starState) }
+            composable<Song4Route> { SongPlayerScreen(navController = navController, backStackEntry = it, starState = starState) }
 
             composable<AlphabetAdventureRoute> { AlphabetAdventureGame(onBack = { navController.popBackStack() }) }
             composable<NumbersMazeRoute> { NumbersMazeGame(onBack = { navController.popBackStack() }) }

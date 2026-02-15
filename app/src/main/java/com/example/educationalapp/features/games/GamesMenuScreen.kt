@@ -70,7 +70,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -81,32 +80,22 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.educationalapp.R
 import com.example.educationalapp.common.AppBackButton
+import com.example.educationalapp.common.LocalSoundManager
 import com.example.educationalapp.designsystem.PastelBlue
 import com.example.educationalapp.designsystem.PastelLavender
 import com.example.educationalapp.designsystem.PastelMint
 import com.example.educationalapp.designsystem.PastelPeach
 import com.example.educationalapp.designsystem.PastelPink
 import com.example.educationalapp.designsystem.PastelYellow
-import com.example.educationalapp.di.SoundManager
 import com.example.educationalapp.fx.AmbientMagicParticles
 import com.example.educationalapp.navigation.*
 import com.example.educationalapp.ui.theme.KidFontFamily
-import dagger.hilt.EntryPoint
-import dagger.hilt.InstallIn
-import dagger.hilt.android.EntryPointAccessors
-import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
-
-@EntryPoint
-@InstallIn(SingletonComponent::class)
-interface SoundManagerEntryPoint {
-    fun soundManager(): SoundManager
-}
 
 data class Game(
     val name: String,
@@ -123,14 +112,7 @@ fun GamesMenuScreen(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope
 ) {
-    val context = LocalContext.current
-    val soundManager = remember {
-        val entryPoint = EntryPointAccessors.fromApplication(
-            context.applicationContext,
-            SoundManagerEntryPoint::class.java
-        )
-        entryPoint.soundManager()
-    }
+    val soundManager = LocalSoundManager.current
 
     val games = remember {
         listOf(
@@ -155,11 +137,11 @@ fun GamesMenuScreen(
             Game("Bandă Animale", R.drawable.icon_game_instruments, AnimalBandRoute, "band"),
             Game("Egg Surprise", R.drawable.ic_game_egg_surprise, EggSurpriseRoute, "egg"),
             Game("Feed Monster", R.drawable.ic_game_feed_monster, FeedMonsterRoute, "monster"),
-            Game("Mix Culori", R.drawable.ic_premium_color_mix, "colorMixing", "color_mix", isPremium = true),
-            Game("Trenul Formelor", R.drawable.ic_premium_shape_train, "shapeTrain", "shape_train", isPremium = true),
-            Game("Habitate Animale", R.drawable.ic_premium_habitats, "habitatRescue", "habitat_rescue", isPremium = true),
-            Game("Parada Sunetelor", R.drawable.icon_game_instruments, "musicalPattern", "musical_pattern", isPremium = true),
-            Game("Garderobă Meteo", R.drawable.ic_premium_weather_dress, "weatherDress", "weather_dress", isPremium = true),
+            Game("Mix Culori", R.drawable.ic_premium_color_mix, ColorMixingRoute, "color_mix", isPremium = true),
+            Game("Trenul Formelor", R.drawable.ic_premium_shape_train, ShapeTrainRoute, "shape_train", isPremium = true),
+            Game("Habitate Animale", R.drawable.ic_premium_habitats, HabitatRescueRoute, "habitat_rescue", isPremium = true),
+            Game("Parada Sunetelor", R.drawable.icon_game_instruments, MusicalPatternRoute, "musical_pattern", isPremium = true),
+            Game("Garderobă Meteo", R.drawable.ic_premium_weather_dress, WeatherDressRoute, "weather_dress", isPremium = true),
         )
     }
 

@@ -7,24 +7,24 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import com.example.educationalapp.common.AppNavigation
+import com.example.educationalapp.common.LocalSoundManager
 import com.example.educationalapp.MainViewModel
 import com.example.educationalapp.di.BgMusicManager
+import com.example.educationalapp.di.SoundManager
 import com.example.educationalapp.ui.theme.EducationalAppTheme
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var bgMusicManager: BgMusicManager
+    @Inject lateinit var soundManager: SoundManager
     private val mainViewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,8 +44,10 @@ class MainActivity : ComponentActivity() {
 
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         setContent {
-            EducationalAppTheme {
-                AppNavigation(viewModel = mainViewModel)
+            CompositionLocalProvider(LocalSoundManager provides soundManager) {
+                EducationalAppTheme {
+                    AppNavigation(viewModel = mainViewModel)
+                }
             }
         }
     }
@@ -81,6 +83,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // Singletons are OK to release here because the app is shutting down.
+        soundManager.release()
         bgMusicManager.release()
     }
 }

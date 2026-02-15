@@ -1,11 +1,11 @@
 package com.example.educationalapp.fx
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -37,7 +37,7 @@ abstract class BaseGameViewModel : ViewModel() {
     /** Call this to begin the game timer. It will invoke [onTimerTick] on every second. */
     fun startGame() {
         if (timerJob != null) return
-        timerJob = CoroutineScope(Dispatchers.Default).launch {
+        timerJob = viewModelScope.launch(Dispatchers.Default) {
             while (true) {
                 delay(1000L)
                 if (!_isPaused.value) {

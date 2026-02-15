@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.educationalapp.R
 import com.example.educationalapp.alphabet.AlphabetSoundPlayer
 import kotlinx.coroutines.delay
@@ -53,7 +54,7 @@ fun MagicGardenGameScreen(
     hasFullVersion: Boolean = false, // FIX: Adăugat cu valoare default pentru a preveni erorile
     onBack: () -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val soundPlayer = remember { AlphabetSoundPlayer(context) }
     val scope = rememberCoroutineScope()

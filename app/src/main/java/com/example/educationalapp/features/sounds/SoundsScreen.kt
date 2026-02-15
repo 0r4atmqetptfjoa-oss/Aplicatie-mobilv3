@@ -1,7 +1,6 @@
 package com.example.educationalapp.features.sounds
 
 import android.content.Context
-import android.media.MediaPlayer
 import androidx.annotation.RawRes
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -518,16 +517,3 @@ fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStar(p: Particle) {
     }
 }
 
-class AudioPlayerHelper(private val context: Context) {
-    private var mediaPlayer: MediaPlayer? = null
-    fun playSound(@RawRes soundResId: Int) {
-        try {
-            mediaPlayer?.release()
-            mediaPlayer = MediaPlayer.create(context, soundResId).apply {
-                setOnCompletionListener { it.release(); mediaPlayer = null }
-                start()
-            }
-        } catch (e: Exception) { e.printStackTrace() }
-    }
-    fun release() { mediaPlayer?.release(); mediaPlayer = null }
-}

@@ -17,7 +17,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -27,18 +26,8 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import com.example.educationalapp.R
 import com.example.educationalapp.common.AppBackButton
-import com.example.educationalapp.di.SoundManager
+import com.example.educationalapp.common.LocalSoundManager
 import com.example.educationalapp.ui.components.rememberAssetSheet
-import dagger.hilt.EntryPoint
-import dagger.hilt.InstallIn
-import dagger.hilt.android.EntryPointAccessors
-import dagger.hilt.components.SingletonComponent
-
-@EntryPoint
-@InstallIn(SingletonComponent::class)
-interface SoundManagerEntryPoint {
-    fun soundManager(): SoundManager
-}
 
 /**
  * Represents an instrument shown in the instruments menu. The [route] property is the
@@ -133,14 +122,7 @@ private fun InstrumentMenuCard(
     instrument: MenuInstrument,
     onClick: () -> Unit
 ) {
-    val context = LocalContext.current
-    val soundManager = remember {
-        val entryPoint = EntryPointAccessors.fromApplication(
-            context.applicationContext,
-            SoundManagerEntryPoint::class.java
-        )
-        entryPoint.soundManager()
-    }
+    val soundManager = LocalSoundManager.current
 
     // Load the icon from the assets folder. We prefix with the instrument folder
     // to locate the correct file. The image is decoded off the UI thread via
