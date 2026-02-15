@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Strings for the song player -->
+    <string name="song_default_title">Cântec</string>
+    <string name="song_player_title">Cântec</string>
+    <string name="song_playing_label">Se redă...</string>
+    <string name="song_paused_label">Pauză</string>
+    <!-- Placeholder menu button labels to avoid missing resources. Actual values can be replaced -->
+    <string name="main_menu_button_songs">Cântece</string>
+
+    <!-- Strings imported from the original project to satisfy references in screens -->
+    <string name="label_settings">Setări</string>
+    <string name="label_home">Acasă</string>
+    <string name="main_menu_button_games">Jocuri</string>
+    <string name="main_menu_button_instruments">Instrumente</string>
+    <string name="main_menu_button_sounds">Sunete</string>
+    <string name="main_menu_button_stories">Povești</string>
+</resources>
