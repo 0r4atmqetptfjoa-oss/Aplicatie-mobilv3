@@ -1,4 +1,4 @@
-package com.example.educationalapp.features.learning.alphabet
+package com.example.educationalapp.alphabet
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

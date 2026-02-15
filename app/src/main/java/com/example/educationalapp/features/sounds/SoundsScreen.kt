@@ -31,13 +31,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -52,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import com.example.educationalapp.R
+import com.example.educationalapp.alphabet.rememberScaledImageBitmap
 import com.example.educationalapp.di.SoundManagerEntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.delay
@@ -217,7 +214,7 @@ fun ImmersivePremiumDetailScreen(
                 p.update()
                 if (p.isDead()) iterator.remove()
             }
-            delay(33)
+            delay(16) // 60 FPS for smoother magic
         }
     }
 
@@ -271,7 +268,7 @@ fun ImmersivePremiumDetailScreen(
                             rowItems.forEach { item ->
                                 PremiumAnimalCard(item, category.themeColor) { pos ->
                                     if (item.soundRes != 0) audioEngine.playSfx(item.soundRes)
-                                    repeat(12) { particlesState.add(createSparkle(pos)) }
+                                    repeat(15) { particlesState.add(createSparkle(pos)) }
                                 }
                             }
                             repeat(4 - rowItems.size) { Spacer(Modifier.width(180.dp)) }
@@ -341,9 +338,14 @@ fun PremiumAnimalCard(
 
     Card(
         modifier = Modifier
-            .size(180.dp)
-            .scale(scale)
-            .graphicsLayer { rotationZ = rot }
+            .size(185.dp) // Slightly bigger
+            .graphicsLayer { 
+                scaleX = scale
+                scaleY = scale
+                rotationZ = rot 
+                shadowElevation = if (isAnimating) 30f else 12f
+                // We use standard Shadow instead of spotColor to avoid compatibility issues
+            }
             .onGloballyPositioned { coords ->
                 val rootPos = coords.positionInRoot()
                 centerPos = Offset(rootPos.x + coords.size.width / 2, rootPos.y + coords.size.height / 2)
@@ -356,9 +358,9 @@ fun PremiumAnimalCard(
                 isAnimating = true
                 onClick(centerPos)
             },
-        shape = RoundedCornerShape(36.dp),
+        shape = RoundedCornerShape(38.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(if (isAnimating) 24.dp else 8.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             // Fundal cu Gradient Dynamic & Soft
@@ -367,40 +369,44 @@ fun PremiumAnimalCard(
                     .fillMaxSize()
                     .background(
                         Brush.linearGradient(
-                            listOf(Color.White, themeColor.copy(alpha = 0.1f), themeColor.copy(alpha = 0.25f)),
+                            listOf(Color.White, themeColor.copy(alpha = 0.15f), themeColor.copy(alpha = 0.35f)),
                             start = Offset(0f, 0f),
-                            end = Offset(500f, 500f)
+                            end = Offset(600f, 600f)
                         )
                     )
             )
             
             // Aura Magică în spatele animalului
             val auraScale by animateFloatAsState(
-                targetValue = if (isAnimating) 1.4f else 1f,
-                animationSpec = tween(300),
+                targetValue = if (isAnimating) 1.5f else 1f,
+                animationSpec = tween(350),
                 label = "auraScale"
             )
             Box(
                 modifier = Modifier
-                    .size(130.dp)
+                    .size(140.dp)
                     .scale(auraScale)
-                    .background(Brush.radialGradient(listOf(themeColor.copy(alpha = 0.4f), Color.Transparent)), CircleShape)
-                    .alpha(0.7f)
+                    .background(Brush.radialGradient(listOf(themeColor.copy(alpha = 0.45f), Color.Transparent)), CircleShape)
+                    .alpha(0.8f)
             )
 
-            Image(
-                painter = painterResource(id = item.imageRes),
-                contentDescription = item.name.asString(),
-                modifier = Modifier.fillMaxSize(0.88f),
-                contentScale = ContentScale.Fit
-            )
+            // OPTIMIZARE: Folosim imagine scalată pentru performanță
+            val animalBitmap = rememberScaledImageBitmap(resId = item.imageRes, maxDim = 512)
+            if (animalBitmap != null) {
+                Image(
+                    bitmap = animalBitmap,
+                    contentDescription = item.name.asString(),
+                    modifier = Modifier.fillMaxSize().padding(10.dp), // Full size with tiny safety margin
+                    contentScale = ContentScale.Fit
+                )
+            }
             
             // Overlay de „Diamant” (Glossy)
-            Canvas(modifier = Modifier.fillMaxSize().alpha(0.3f)) {
+            Canvas(modifier = Modifier.fillMaxSize().alpha(0.35f)) {
                 val path = Path().apply {
                     moveTo(0f, 0f)
-                    lineTo(size.width * 0.4f, 0f)
-                    lineTo(0f, size.height * 0.4f)
+                    lineTo(size.width * 0.45f, 0f)
+                    lineTo(0f, size.height * 0.45f)
                     close()
                 }
                 drawPath(path, Color.White)
@@ -410,7 +416,7 @@ fun PremiumAnimalCard(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .border(3.dp, Brush.linearGradient(listOf(Color.White.copy(0.8f), Color.Transparent, themeColor.copy(0.5f))), RoundedCornerShape(36.dp))
+                    .border(4.dp, Brush.linearGradient(listOf(Color.White.copy(0.9f), Color.Transparent, themeColor.copy(0.6f))), RoundedCornerShape(38.dp))
             )
         }
     }
