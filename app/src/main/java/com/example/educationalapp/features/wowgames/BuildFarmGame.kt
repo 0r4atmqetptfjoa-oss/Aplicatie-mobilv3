@@ -1,5 +1,9 @@
 package com.example.educationalapp.features.wowgames
 
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.MediaPlayer
+import android.media.SoundPool
 import androidx.annotation.DrawableRes
 import androidx.annotation.RawRes
 import androidx.compose.animation.core.Animatable
@@ -39,7 +43,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import com.example.educationalapp.common.LocalSoundManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.IntOffset
@@ -85,6 +88,65 @@ private data class FarmParticle(
  * --- PREMIUM AUDIO MANAGER ---
  * Prioritate: SFX taie Vocea. Vocea așteaptă liniștea.
  */
+private class FarmAudioManager(private val context: Context) {
+    private val soundPool: SoundPool
+    private val loaded = mutableMapOf<Int, Int>()
+    private var voicePlayer: MediaPlayer? = null
+
+    init {
+        val attrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_GAME)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        // MaxStreams 2 permite suprapunerea sunetului de victorie peste animal
+        soundPool = SoundPool.Builder().setAudioAttributes(attrs).setMaxStreams(2).build()
+    }
+
+    fun prime(@RawRes resId: Int) {
+        if (loaded.containsKey(resId)) return
+        loaded[resId] = soundPool.load(context, resId, 1)
+    }
+
+    fun playSFX(@RawRes resId: Int, rate: Float = 1f, vol: Float = 1f, stopVoice: Boolean = true) {
+        if (stopVoice) stopVoice()
+        
+        val id = loaded[resId] ?: run {
+            prime(resId)
+            loaded[resId]
+        }
+        if (id != null && id != 0) {
+            soundPool.play(id, vol, vol, 1, 0, rate)
+        }
+    }
+
+    fun playVoice(@RawRes resId: Int) {
+        stopVoice() // Safety first
+        try {
+            voicePlayer = MediaPlayer.create(context, resId)
+            voicePlayer?.setOnCompletionListener { mp ->
+                mp.release()
+                if (voicePlayer === mp) voicePlayer = null
+            }
+            voicePlayer?.start()
+        } catch (_: Exception) { }
+    }
+
+    fun stopVoice() {
+        try {
+            if (voicePlayer?.isPlaying == true) {
+                voicePlayer?.stop()
+            }
+            voicePlayer?.release()
+        } catch (_: Exception) { }
+        voicePlayer = null
+    }
+
+    fun release() {
+        soundPool.release()
+        stopVoice()
+    }
+}
+
 @Composable
 fun BuildFarmGame(
     onBack: () -> Unit = {}
@@ -92,7 +154,7 @@ fun BuildFarmGame(
     val context = LocalContext.current
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    val soundManager = LocalSoundManager.current
+    val audio = remember { FarmAudioManager(context) }
 
     // --- LISTA ANIMALE COMPLETĂ ---
     // Include sunetele VECHI pentru animalele vechi și cele NOI pentru restul
@@ -168,7 +230,7 @@ fun BuildFarmGame(
     }
 
     LaunchedEffect(Unit) {
-        soundManager.loadSounds(animals.map { it.tapSoundRes })
+        animals.forEach { a -> audio.prime(a.tapSoundRes) }
     }
 
     var targetIdx by remember { mutableIntStateOf(Random.nextInt(animals.size)) }
@@ -181,7 +243,7 @@ fun BuildFarmGame(
         idleVoiceJob = scope.launch {
             delay(delayMs)
             if (isActive) {
-                soundManager.playVoice(animals[targetIdx].voiceInstructionRes)
+                audio.playVoice(animals[targetIdx].voiceInstructionRes)
             }
         }
     }
@@ -218,6 +280,10 @@ fun BuildFarmGame(
                 }
             }
         }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { audio.release() }
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -300,11 +366,11 @@ fun BuildFarmGame(
                         .pointerInput(idx) {
                             detectTapGestures {
                                 // --- LOGICĂ JOC & AUDIO ---
-                                soundManager.stopVoice()
+                                audio.stopVoice()
                                 idleVoiceJob?.cancel()
 
                                 // Redăm sunetul specific (Original sau Nou)
-                                soundManager.playSound(a.tapSoundRes, rate = 1f + Random.nextFloat() * 0.06f, duckMusic = false)
+                                audio.playSFX(a.tapSoundRes, rate = 1f + Random.nextFloat() * 0.06f)
 
                                 scope.launch { 
                                     tapScale.snapTo(0.85f)
@@ -322,7 +388,7 @@ fun BuildFarmGame(
                                     scope.launch {
                                         delay(800)
                                         val winRaw = context.resources.getIdentifier("math_sfx_win_short", "raw", context.packageName)
-                                        if (winRaw != 0) { soundManager.stopVoice(); soundManager.playSound(winRaw, volume = 0.6f, duckMusic = false) }
+                                        if (winRaw != 0) audio.playSFX(winRaw, vol = 0.6f, stopVoice = true)
 
                                         val burstColors = listOf(Color(0xFFFFD24A), Color(0xFF7CE0FF), Color(0xFFFF7AD9), Color(0xFF8BFF8B))
                                         repeat(40) {

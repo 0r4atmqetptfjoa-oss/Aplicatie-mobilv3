@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -45,10 +46,11 @@ import androidx.constraintlayout.compose.ConstraintLayout
 import androidx.constraintlayout.compose.Dimension
 import androidx.navigation.NavController
 import com.example.educationalapp.R
-import com.example.educationalapp.common.LocalSoundManager
+import com.example.educationalapp.di.SoundManagerEntryPoint
 import com.example.educationalapp.fx.AmbientMagicParticles
 import com.example.educationalapp.navigation.*
 import com.example.educationalapp.ui.theme.KidFontFamily
+import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
@@ -83,7 +85,14 @@ fun MainMenuScreen(
         MainMenuModule(StoriesMenuRoute, R.drawable.main_menu_icon_povesti, stringResource(id = R.string.main_menu_button_stories)),
     )
     // --- Muzica meniului principal: se aude doar cat timp suntem pe acest ecran ---
-    val soundManager = LocalSoundManager.current
+    val context = LocalContext.current
+    val soundManager = remember {
+        val entryPoint = EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            SoundManagerEntryPoint::class.java
+        )
+        entryPoint.soundManager()
+    }
 
     DisposableEffect(musicEnabled) {
         if (musicEnabled) soundManager.playMenuMusic() else soundManager.pauseMenuMusic()
@@ -281,7 +290,14 @@ private fun ModuleButton(
     navController: NavController,
     delayIndex: Int
 ) {
-    val soundManager = LocalSoundManager.current
+    val context = LocalContext.current
+    val soundManager = remember {
+        val entryPoint = EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            SoundManagerEntryPoint::class.java
+        )
+        entryPoint.soundManager()
+    }
 
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -360,7 +376,14 @@ fun SettingsWiggleButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val soundManager = LocalSoundManager.current
+    val context = LocalContext.current
+    val soundManager = remember {
+        val entryPoint = EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            SoundManagerEntryPoint::class.java
+        )
+        entryPoint.soundManager()
+    }
 
     var isSpinning by remember { mutableStateOf(false) }
     

@@ -7,13 +7,15 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.CompositionLocalProvider // IMPORTANT: Importul care lipsea!
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+
+// Importurile noastre
 import com.example.educationalapp.common.AppNavigation
-import com.example.educationalapp.common.LocalSoundManager
-import com.example.educationalapp.MainViewModel
+import com.example.educationalapp.common.MainViewModel
+import com.example.educationalapp.common.LocalSoundManager // Trebuie să existe în common/Locals.kt
 import com.example.educationalapp.di.BgMusicManager
 import com.example.educationalapp.di.SoundManager
 import com.example.educationalapp.ui.theme.EducationalAppTheme
@@ -25,25 +27,25 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var bgMusicManager: BgMusicManager
     @Inject lateinit var soundManager: SoundManager
+    
     private val mainViewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1. Permitem conținutului să se întindă sub barele de sistem
+        // Setări Fullscreen
         WindowCompat.setDecorFitsSystemWindows(window, false)
-
-        // 2. Folosim și spațiul de lângă Notch (Display Cutout) pentru Full Screen total
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes.layoutInDisplayCutoutMode = 
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
-
-        // 3. Ascundem barele imediat
         hideSystemBars()
 
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+
+        // Apelul corect setContent
         setContent {
+            // Aici oferim SoundManager întregii aplicații
             CompositionLocalProvider(LocalSoundManager provides soundManager) {
                 EducationalAppTheme {
                     AppNavigation(viewModel = mainViewModel)
@@ -64,26 +66,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Configurează modul Imersiv total (Sticky Immersive).
-     * Barele de sistem sunt ascunse complet. Dacă se face swipe, apar temporar
-     * ca niște umbre și dispar singure după câteva secunde fără să modifice layout-ul.
-     */
     private fun hideSystemBars() {
         val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
-        
-        // Comportamentul "Transient": barele apar doar la swipe și dispar singure.
-        // Este cea mai bună opțiune pentru copii deoarece nu mută butoanele jocului.
         windowInsetsController.systemBarsBehavior =
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        
-        // Ascunde atât bara de status (sus) cât și cea de navigare (jos)
         windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // Singletons are OK to release here because the app is shutting down.
         soundManager.release()
         bgMusicManager.release()
     }

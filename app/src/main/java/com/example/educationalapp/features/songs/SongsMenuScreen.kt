@@ -11,15 +11,27 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.example.educationalapp.common.LocalSoundManager
+import com.example.educationalapp.di.SoundManager
 import com.example.educationalapp.navigation.*
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface SoundManagerEntryPoint {
+    fun soundManager(): SoundManager
+}
 
 data class SongCategory(
     val name: String,
@@ -28,7 +40,14 @@ data class SongCategory(
 
 @Composable
 fun SongsMenuScreen(navController: NavController) {
-    val soundManager = LocalSoundManager.current
+    val context = LocalContext.current
+    val soundManager = remember {
+        val entryPoint = EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            SoundManagerEntryPoint::class.java
+        )
+        entryPoint.soundManager()
+    }
 
     val songs = listOf(
         SongCategory("Cântecul 1", Song1Route),

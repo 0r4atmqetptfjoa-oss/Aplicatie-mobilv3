@@ -17,13 +17,15 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
-import com.example.educationalapp.MainViewModel
+
+// --- IMPORTURILE TALE ORIGINALE (CARE MERG) ---
+import com.example.educationalapp.common.MainViewModel 
 import com.example.educationalapp.navigation.*
 
 import com.example.educationalapp.features.mainmenu.MainMenuScreen
-import com.example.educationalapp.SettingsScreen
 import com.example.educationalapp.features.games.GamesMenuScreen
 
+// Jocuri (Păstrăm pachetele exact cum erau în fișierul tău vechi)
 import com.example.educationalapp.alphabet.AlphabetGameScreen
 import com.example.educationalapp.features.learning.colors.ColorsGameScreen
 import com.example.educationalapp.features.learning.shapes.ShapesGameScreen
@@ -43,9 +45,6 @@ import com.example.educationalapp.MathGameScreen
 import com.example.educationalapp.BlocksGameScreen
 import com.example.educationalapp.MazeGameScreen
 import com.example.educationalapp.AnimalSortingGameScreen
-import com.example.educationalapp.features.games.CodingGameScreen
-import com.example.educationalapp.features.wowgames.EggGameScreen
-import com.example.educationalapp.features.wowgames.FeedGameScreen
 
 // WOW GAMES
 import com.example.educationalapp.features.wowgames.AlphabetAdventureGame
@@ -54,15 +53,18 @@ import com.example.educationalapp.features.wowgames.BuildFarmGame
 import com.example.educationalapp.features.wowgames.ColourRainbowGame
 import com.example.educationalapp.features.wowgames.InteractiveStoryGame
 import com.example.educationalapp.features.wowgames.WowGamesApp
+import com.example.educationalapp.features.wowgames.EggGameScreen
+import com.example.educationalapp.features.wowgames.FeedGameScreen
 
-// ✅ IMPORTUL NOU PENTRU SUNETE (Reparat)
+// SUNETE
 import com.example.educationalapp.features.sounds.SoundsMainScreen
 
-// Alte meniuri (Instrumente, Povești, Cântece - Rămân neschimbate)
+// Meniuri Secundare
 import com.example.educationalapp.features.instruments.InstrumentsMenuScreen
 import com.example.educationalapp.features.stories.StoriesMenuScreen
 import com.example.educationalapp.features.songs.SongsMenuScreen
 
+// Instrumente & Cântece
 import com.example.educationalapp.features.instruments.InstrumentSoundScreen
 import com.example.educationalapp.features.instruments.PianoDefinition
 import com.example.educationalapp.features.instruments.XylofonDefinition
@@ -71,10 +73,13 @@ import com.example.educationalapp.features.instruments.HarpDefinition
 import com.example.educationalapp.features.instruments.SaxophoneDefinition
 import com.example.educationalapp.features.instruments.DrumsDefinition
 import com.example.educationalapp.features.songs.SongPlayerScreen
-import com.example.educationalapp.PaywallScreen
 import com.example.educationalapp.features.intro.IntroScreen
 
-// New premium mini‑games
+// --- IMPORTURI ACTUALIZATE PENTRU NOILE SETĂRI (Din folderul common) ---
+import com.example.educationalapp.common.SettingsScreen
+import com.example.educationalapp.PaywallScreen
+
+// Jocuri Premium Noi
 import com.example.educationalapp.minigames.colormixing.ColorMixingGameScreen
 import com.example.educationalapp.minigames.colormixing.ColorMixingGameViewModel
 import com.example.educationalapp.minigames.shapetrain.ShapeTrainGameScreen
@@ -91,11 +96,14 @@ import com.example.educationalapp.minigames.weatherdress.WeatherDressUpGameViewM
 fun AppNavigation(viewModel: MainViewModel) {
     val navController = rememberNavController()
 
+    // --- STATE-URI ---
     val starCount by viewModel.starCount.collectAsStateWithLifecycle()
     val soundEnabled by viewModel.soundEnabled.collectAsStateWithLifecycle()
     val musicEnabled by viewModel.musicEnabled.collectAsStateWithLifecycle()
     val hardModeEnabled by viewModel.hardModeEnabled.collectAsStateWithLifecycle()
-    val hasFullVersion by viewModel.hasFullVersion.collectAsStateWithLifecycle()
+    
+    val hapticEnabled by viewModel.hapticEnabled.collectAsStateWithLifecycle()
+    val isPremium by viewModel.isPremium.collectAsStateWithLifecycle()
 
     val starState = rememberSaveable { mutableIntStateOf(starCount) }
     LaunchedEffect(starCount) {
@@ -121,18 +129,30 @@ fun AppNavigation(viewModel: MainViewModel) {
                 })
             }
 
-            composable<MainMenuRoute> { MainMenuScreen(navController = navController, starCount = starCount, musicEnabled = musicEnabled) }
+            composable<MainMenuRoute> { 
+                MainMenuScreen(
+                    navController = navController, 
+                    starCount = starCount, 
+                    musicEnabled = musicEnabled
+                ) 
+            }
+            
             composable<SettingsRoute> {
                 SettingsScreen(
                     navController = navController,
                     soundEnabled = soundEnabled,
                     musicEnabled = musicEnabled,
+                    hapticEnabled = hapticEnabled,     
                     hardModeEnabled = hardModeEnabled,
+                    isPremium = isPremium,             
                     onSoundChanged = { viewModel.toggleSound() },
                     onMusicChanged = { viewModel.toggleMusic() },
-                    onHardModeChanged = { viewModel.toggleHardMode() }
+                    onHapticChanged = { viewModel.toggleHaptics() }, 
+                    onHardModeChanged = { viewModel.toggleHardMode() },
+                    onBuyPremium = { navController.navigate(PaywallRoute) } 
                 )
             }
+            
             composable<GamesMenuRoute> {
                 GamesMenuScreen(
                     navController = navController,
@@ -141,6 +161,7 @@ fun AppNavigation(viewModel: MainViewModel) {
                 )
             }
 
+            // --- JOCURILE TALE EXISTENTE (Neschimbate) ---
             navigation<AlphabetGraphRoute>(startDestination = AlphabetQuizRoute) {
                 composable<AlphabetQuizRoute> { AlphabetGameScreen(onBack = { navController.backToGamesMenu() }) }
             }
@@ -164,12 +185,11 @@ fun AppNavigation(viewModel: MainViewModel) {
             composable<MazeRoute> { MazeGameScreen(navController, starState) }
             composable<ShadowMatchRoute> { ShadowMatchGameScreen(onBack = { navController.backToGamesMenu() }) }
             composable<AnimalSortingRoute> { AnimalSortingGameScreen(navController, starState) }
-            composable<CodingRoute> { CodingGameScreen(navController, starState) }
             
             composable<EggSurpriseRoute> { EggGameScreen(onBack = { navController.backToGamesMenu() }) }
             composable<FeedMonsterRoute> { FeedGameScreen(onBack = { navController.backToGamesMenu() }) }
 
-            // New premium mini‑games (type-safe routes)
+            // --- JOCURILE NOI PREMIUM ---
             composable<ColorMixingRoute> {
                 val vm: ColorMixingGameViewModel = viewModel()
                 ColorMixingGameScreen(viewModel = vm)
@@ -191,11 +211,8 @@ fun AppNavigation(viewModel: MainViewModel) {
                 WeatherDressUpGameScreen(viewModel = vm)
             }
 
-            // ==========================================
-            // ✅ FIX SUNETE - AICI AM MODIFICAT
-            // ==========================================
+            // --- SUNETE ---
             composable<SoundsMenuRoute> {
-                // Folosim noul ecran unificat pentru sunete
                 SoundsMainScreen(onExit = { navController.popBackStack() })
             }
 
@@ -224,10 +241,14 @@ fun AppNavigation(viewModel: MainViewModel) {
             composable<WowGamesRoute> { WowGamesApp(navController = navController) }
 
             composable<PaywallRoute> {
-                PaywallScreen(navController = navController, hasFullVersion = hasFullVersion, onUnlock = {
-                    viewModel.setHasFullVersion(true)
-                    navController.backToGamesMenu()
-                })
+                PaywallScreen(
+                    navController = navController, 
+                    hasFullVersion = isPremium, 
+                    onUnlock = {
+                        viewModel.activatePremium()
+                        navController.backToGamesMenu()
+                    }
+                )
             }
         }
     }

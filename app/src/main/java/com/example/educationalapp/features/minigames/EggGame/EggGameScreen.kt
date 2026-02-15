@@ -13,7 +13,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.educationalapp.R
 import kotlinx.coroutines.launch
 
@@ -22,7 +21,7 @@ fun EggGameScreen(
     viewModel: EggGameViewModel = hiltViewModel(),
     onBack: () -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsState()
     val creature = EggAssets.creatures[uiState.currentCreatureIndex]
 
     val scaleAnim = remember { Animatable(1f) }

@@ -1,12 +1,14 @@
 package com.example.educationalapp.features.sounds
 
 import android.content.Context
+import android.media.MediaPlayer
 import androidx.annotation.RawRes
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -19,10 +21,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
@@ -39,21 +44,23 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import androidx.compose.ui.zIndex
 import com.example.educationalapp.R
+import com.example.educationalapp.di.SoundManagerEntryPoint
+import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
-// =========================================================================
-// MAIN SCREEN CONTROLLER
-// =========================================================================
 @Composable
 fun SoundsMainScreen(
     onExit: () -> Unit = {}
@@ -62,23 +69,17 @@ fun SoundsMainScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val audioEngine = remember { AudioEngine(context) }
+    
+    val soundManager = remember {
+        EntryPointAccessors.fromApplication(context.applicationContext, SoundManagerEntryPoint::class.java).soundManager()
+    }
 
-
-    // Toggles (UI can bind to these)
-    var sfxEnabled by remember { mutableStateOf(true) }
-    var musicEnabled by remember { mutableStateOf(true) }
-
-    LaunchedEffect(sfxEnabled, musicEnabled, selectedCategory) {
-        audioEngine.sfxEnabled = sfxEnabled
-        audioEngine.musicEnabled = musicEnabled
+    LaunchedEffect(selectedCategory) {
         val ambient = selectedCategory?.ambientMusicRes ?: R.raw.main_menu_music
         audioEngine.playAmbient(ambient)
-
-        // Preload category SFX to avoid first-tap lag
         selectedCategory?.items?.forEach { audioEngine.preloadSfx(it.soundRes) }
     }
 
-    // Bind to lifecycle (pause/resume) and release
     DisposableEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.addObserver(audioEngine)
         onDispose {
@@ -87,10 +88,6 @@ fun SoundsMainScreen(
         }
     }
 
-    // Muzică ambientală - se schimbă în funcție de categorie
-    
-
-    // Tranziție între Meniu și Joc
     AnimatedContent(
         targetState = selectedCategory,
         transitionSpec = {
@@ -102,29 +99,27 @@ fun SoundsMainScreen(
         if (category == null) {
             CategoriesPremiumMenu(
                 categories = SoundDataRepository.categories,
-                onCategoryClick = { 
-                    selectedCategory = it 
+                onCategoryClick = { selectedCategory = it },
+                onExit = {
+                    soundManager.playClickIconSound()
+                    onExit()
                 }
             )
         } else {
             ImmersivePremiumDetailScreen(
                 category = category,
-                onBack = {
-                    selectedCategory = null
-                },
+                onBack = { selectedCategory = null },
                 audioEngine = audioEngine
             )
         }
     }
 }
 
-// =========================================================================
-// ECRAN 1: MENIU PREMIUM (Carduri Egale și Mari)
-// =========================================================================
 @Composable
 fun CategoriesPremiumMenu(
     categories: List<SoundCategory>,
-    onCategoryClick: (SoundCategory) -> Unit
+    onCategoryClick: (SoundCategory) -> Unit,
+    onExit: () -> Unit
 ) {
     var isVisible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { isVisible = true }
@@ -136,10 +131,21 @@ fun CategoriesPremiumMenu(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
+
+        Image(
+            painter = painterResource(id = R.drawable.ui_btn_back_wood),
+            contentDescription = "Back",
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(24.dp)
+                .size(70.dp)
+                .zIndex(10f)
+                .clickable { onExit() }
+        )
 
         Column(
-            modifier = Modifier.fillMaxSize().padding(24.dp), // Padding mai mare
+            modifier = Modifier.fillMaxSize().padding(24.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -148,23 +154,20 @@ fun CategoriesPremiumMenu(
                 enter = fadeIn(tween(1000)) + slideInVertically(tween(1000)) { -50 }
             ) {
                 Text(
-                    text = "Alege o Lume",
-                    fontSize = 42.sp, // Titlu mai mare
-                    fontWeight = FontWeight.ExtraBold,
+                    text = "Lumea Sunetelor 🎵",
+                    fontSize = 44.sp,
+                    fontWeight = FontWeight.Black,
                     color = Color.White,
                     modifier = Modifier.padding(bottom = 24.dp),
                     style = androidx.compose.ui.text.TextStyle(
-                        shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 12f)
+                        shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 15f)
                     )
                 )
             }
 
-            // Calculăm layout-ul pe 2 rânduri
-            // Avem 7 categorii. Rândul 1: 4 carduri, Rândul 2: 3 carduri (centrate)
             val row1 = categories.take(4)
             val row2 = categories.drop(4)
 
-            // RÂNDUL 1
             Row(
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally)
@@ -177,7 +180,6 @@ fun CategoriesPremiumMenu(
                 }
             }
 
-            // RÂNDUL 2
             Row(
                 modifier = Modifier.fillMaxWidth(0.75f).weight(1f).padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally)
@@ -189,6 +191,227 @@ fun CategoriesPremiumMenu(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ImmersivePremiumDetailScreen(
+    category: SoundCategory,
+    onBack: () -> Unit,
+    audioEngine: AudioEngine
+) {
+    val context = LocalContext.current
+    val soundManager = remember {
+        EntryPointAccessors.fromApplication(context.applicationContext, SoundManagerEntryPoint::class.java).soundManager()
+    }
+    
+    val particlesState = remember { mutableStateListOf<Particle>() }
+
+    LaunchedEffect(particlesState.size) {
+        if (particlesState.isEmpty()) return@LaunchedEffect
+        while (particlesState.isNotEmpty()) {
+            val iterator = particlesState.iterator()
+            while (iterator.hasNext()) {
+                val p = iterator.next()
+                p.update()
+                if (p.isDead()) iterator.remove()
+            }
+            delay(33)
+        }
+    }
+
+    val itemsPerPage = 8
+    val realPageCount = (category.items.size + itemsPerPage - 1) / itemsPerPage
+    val virtualPageCount = if (realPageCount > 1) 10_000 else 1
+    val pagerState = rememberPagerState(
+        initialPage = if (realPageCount > 1) virtualPageCount / 2 else 0,
+        pageCount = { virtualPageCount }
+    )
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(id = category.backgroundRes),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 80.dp)
+        ) { virtualPage ->
+            val pageIndex = if (realPageCount <= 1) 0 else ((virtualPage % realPageCount) + realPageCount) % realPageCount
+            val pageOffset = (pagerState.currentPage - virtualPage) + pagerState.currentPageOffsetFraction
+            val scaleFactor = lerp(1f, 0.85f, pageOffset.absoluteValue.coerceIn(0f, 1f))
+            val alphaFactor = lerp(1f, 0.5f, pageOffset.absoluteValue.coerceIn(0f, 1f))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = scaleFactor
+                        scaleY = scaleFactor
+                        alpha = alphaFactor
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                val startIndex = pageIndex * itemsPerPage
+                val endIndex = minOf(startIndex + itemsPerPage, category.items.size)
+                val pageItems = category.items.subList(startIndex, endIndex)
+
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(vertical = 32.dp),
+                    verticalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    val chunks = pageItems.chunked(4)
+                    chunks.forEach { rowItems ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            rowItems.forEach { item ->
+                                PremiumAnimalCard(item, category.themeColor) { pos ->
+                                    if (item.soundRes != 0) audioEngine.playSfx(item.soundRes)
+                                    repeat(12) { particlesState.add(createSparkle(pos)) }
+                                }
+                            }
+                            repeat(4 - rowItems.size) { Spacer(Modifier.width(180.dp)) }
+                        }
+                    }
+                    if (chunks.size < 2) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            particlesState.forEach { p -> drawStar(p) }
+        }
+
+        if (realPageCount > 1) {
+            val currentRealPage = if (realPageCount <= 1) 0 else ((pagerState.currentPage % realPageCount) + realPageCount) % realPageCount
+            Row(
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                repeat(realPageCount) { iteration ->
+                    val color = if (currentRealPage == iteration) Color.White else Color.White.copy(alpha = 0.4f)
+                    val size = if (currentRealPage == iteration) 14.dp else 10.dp
+                    Box(modifier = Modifier.size(size).clip(CircleShape).background(color))
+                }
+            }
+        }
+
+        Image(
+            painter = painterResource(id = R.drawable.ui_btn_back_wood),
+            contentDescription = "Back",
+            modifier = Modifier
+                .padding(24.dp)
+                .size(80.dp)
+                .align(Alignment.TopStart)
+                .clickable { 
+                    soundManager.playClickIconSound()
+                    onBack() 
+                }
+        )
+    }
+}
+
+@Composable
+fun PremiumAnimalCard(
+    item: SoundItem,
+    themeColor: Color,
+    onClick: (Offset) -> Unit
+) {
+    var isAnimating by remember { mutableStateOf(false) }
+    var centerPos by remember { mutableStateOf(Offset.Zero) }
+    val haptic = LocalHapticFeedback.current
+
+    val scale by animateFloatAsState(
+        targetValue = if (isAnimating) 1.15f else 1f,
+        animationSpec = spring(dampingRatio = 0.4f, stiffness = 400f),
+        finishedListener = { isAnimating = false },
+        label = "scale"
+    )
+
+    val infiniteRotation = rememberInfiniteTransition(label = "floatingCard")
+    val rot by infiniteRotation.animateFloat(
+        initialValue = -2f, targetValue = 2f,
+        animationSpec = infiniteRepeatable(tween(2500, easing = EaseInOutSine), RepeatMode.Reverse),
+        label = "rot"
+    )
+
+    Card(
+        modifier = Modifier
+            .size(180.dp)
+            .scale(scale)
+            .graphicsLayer { rotationZ = rot }
+            .onGloballyPositioned { coords ->
+                val rootPos = coords.positionInRoot()
+                centerPos = Offset(rootPos.x + coords.size.width / 2, rootPos.y + coords.size.height / 2)
+            }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                isAnimating = true
+                onClick(centerPos)
+            },
+        shape = RoundedCornerShape(36.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(if (isAnimating) 24.dp else 8.dp)
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            // Fundal cu Gradient Dynamic & Soft
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.linearGradient(
+                            listOf(Color.White, themeColor.copy(alpha = 0.1f), themeColor.copy(alpha = 0.25f)),
+                            start = Offset(0f, 0f),
+                            end = Offset(500f, 500f)
+                        )
+                    )
+            )
+            
+            // Aura Magică în spatele animalului
+            val auraScale by animateFloatAsState(
+                targetValue = if (isAnimating) 1.4f else 1f,
+                animationSpec = tween(300),
+                label = "auraScale"
+            )
+            Box(
+                modifier = Modifier
+                    .size(130.dp)
+                    .scale(auraScale)
+                    .background(Brush.radialGradient(listOf(themeColor.copy(alpha = 0.4f), Color.Transparent)), CircleShape)
+                    .alpha(0.7f)
+            )
+
+            Image(
+                painter = painterResource(id = item.imageRes),
+                contentDescription = item.name.asString(),
+                modifier = Modifier.fillMaxSize(0.88f),
+                contentScale = ContentScale.Fit
+            )
+            
+            // Overlay de „Diamant” (Glossy)
+            Canvas(modifier = Modifier.fillMaxSize().alpha(0.3f)) {
+                val path = Path().apply {
+                    moveTo(0f, 0f)
+                    lineTo(size.width * 0.4f, 0f)
+                    lineTo(0f, size.height * 0.4f)
+                    close()
+                }
+                drawPath(path, Color.White)
+            }
+            
+            // Border Premium Strălucitor
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .border(3.dp, Brush.linearGradient(listOf(Color.White.copy(0.8f), Color.Transparent, themeColor.copy(0.5f))), RoundedCornerShape(36.dp))
+            )
         }
     }
 }
@@ -237,12 +460,11 @@ fun CategoryCardUltra(
         Box(modifier = Modifier.fillMaxSize()) {
             Image(
                 painter = painterResource(id = category.coverRes),
-                contentDescription = category.title.asString(), // REPARAT: .asString()
+                contentDescription = category.title.asString(),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
             
-            // Gradient
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -256,7 +478,7 @@ fun CategoryCardUltra(
             )
 
             Text(
-                text = category.title.asString(), // REPARAT: .asString()
+                text = category.title.asString(),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
@@ -272,218 +494,12 @@ fun CategoryCardUltra(
     }
 }
 
-// =========================================================================
-// ECRAN 2: JOC IMERSIV (Buton Back Lemn)
-// =========================================================================
-@Composable
-fun ImmersivePremiumDetailScreen(
-    category: SoundCategory,
-    onBack: () -> Unit,
-    audioEngine: AudioEngine
-) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val audioEngine = remember { AudioEngine(context) }
-
-    // Bind to lifecycle (pause/resume) and release
-    DisposableEffect(lifecycleOwner) {
-        lifecycleOwner.lifecycle.addObserver(audioEngine)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(audioEngine)
-            audioEngine.release()
-        }
-    }
-    val particlesState = remember { mutableStateListOf<Particle>() }
-
-LaunchedEffect(particlesState.size) {
-        if (particlesState.isEmpty()) return@LaunchedEffect
-        while (particlesState.isNotEmpty()) {
-            val iterator = particlesState.iterator()
-            while (iterator.hasNext()) {
-                val p = iterator.next()
-                p.update()
-                if (p.isDead()) iterator.remove()
-            }
-            // 30fps is enough for sparkles and saves CPU on low-end devices.
-            delay(33)
-        }
-    }
-
-
-    
-
-    val itemsPerPage = 8
-    val realPageCount = (category.items.size + itemsPerPage - 1) / itemsPerPage
-
-    // Infinite-ish carousel feeling: swipe left/right always works, pages wrap visually.
-    val virtualPageCount = if (realPageCount > 1) 10_000 else 1
-    val pagerState = rememberPagerState(
-        initialPage = if (realPageCount > 1) virtualPageCount / 2 else 0,
-        pageCount = { virtualPageCount }
-    )
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Fundal Specific Lumii
-        Image(
-            painter = painterResource(id = category.backgroundRes),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // Pager Interactiv
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 80.dp)
-        ) { virtualPage ->
-            val pageIndex = if (realPageCount <= 1) 0 else ((virtualPage % realPageCount) + realPageCount) % realPageCount
-            val pageOffset = (pagerState.currentPage - virtualPage) + pagerState.currentPageOffsetFraction
-            val scaleFactor = lerp(1f, 0.85f, pageOffset.absoluteValue.coerceIn(0f, 1f))
-            val alphaFactor = lerp(1f, 0.5f, pageOffset.absoluteValue.coerceIn(0f, 1f))
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = scaleFactor
-                        scaleY = scaleFactor
-                        alpha = alphaFactor
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                val startIndex = pageIndex * itemsPerPage
-                val endIndex = minOf(startIndex + itemsPerPage, category.items.size)
-                val pageItems = category.items.subList(startIndex, endIndex)
-
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(vertical = 32.dp),
-                    verticalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    val topRow = pageItems.take(4)
-                    val bottomRow = if (pageItems.size > 4) pageItems.drop(4) else emptyList()
-
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        topRow.forEach { item ->
-                            PremiumAnimalItem(item) { pos ->
-                                if (item.soundRes != 0) audioEngine.playSfx(item.soundRes, volume = if (category.id.contains("insect", ignoreCase = true)) 1f else 1f)
-                                repeat(8) { particlesState.add(createSparkle(pos)) }
-                            }
-                        }
-                        repeat(4 - topRow.size) { Spacer(Modifier.width(160.dp)) }
-                    }
-
-                    if (bottomRow.isNotEmpty()) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            bottomRow.forEach { item ->
-                                PremiumAnimalItem(item) { pos ->
-                                    if (item.soundRes != 0) audioEngine.playSfx(item.soundRes, volume = if (category.id.contains("insect", ignoreCase = true)) 1f else 1f)
-                                    repeat(8) { particlesState.add(createSparkle(pos)) }
-                                }
-                            }
-                            repeat(4 - bottomRow.size) { Spacer(Modifier.width(160.dp)) }
-                        }
-                    } else {
-                        Spacer(Modifier.weight(1f))
-                    }
-                }
-            }
-        }
-
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            particlesState.forEach { p -> drawStar(p) }
-        }
-
-        if (realPageCount > 1) {
-            val currentRealPage = if (realPageCount <= 1) 0 else ((pagerState.currentPage % realPageCount) + realPageCount) % realPageCount
-
-            Row(
-                Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                repeat(realPageCount) { iteration ->
-                    val color = if (currentRealPage == iteration) Color.White else Color.White.copy(alpha = 0.4f)
-                    val size = if (currentRealPage == iteration) 14.dp else 10.dp
-                    Box(modifier = Modifier.size(size).clip(CircleShape).background(color))
-                }
-            }
-        }
-
-        // BUTON BACK
-        Image(
-            painter = painterResource(id = R.drawable.ui_btn_back_wood),
-            contentDescription = "Back",
-            modifier = Modifier
-                .padding(24.dp)
-                .size(80.dp)
-                .align(Alignment.TopStart)
-                .clickable { onBack() }
-        )
-    }
-}
-
-@Composable
-fun PremiumAnimalItem(
-    item: SoundItem,
-    onClick: (Offset) -> Unit
-) {
-    var isAnimating by remember { mutableStateOf(false) }
-    var centerPos by remember { mutableStateOf(Offset.Zero) }
-
-    val scale by animateFloatAsState(
-        targetValue = if (isAnimating) 1.2f else 1f,
-        animationSpec = spring(dampingRatio = 0.4f, stiffness = 300f),
-        finishedListener = { isAnimating = false },
-        label = "scale"
-    )
-
-    val rotation by animateFloatAsState(
-        targetValue = if (isAnimating) (Random.nextInt(-15, 15)).toFloat() else 0f,
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f),
-        label = "rotate"
-    )
-
-    Box(
-        modifier = Modifier
-            .size(170.dp)
-            .onGloballyPositioned { coords ->
-                val rootPos = coords.positionInRoot()
-                centerPos = Offset(rootPos.x + coords.size.width / 2, rootPos.y + coords.size.height / 2)
-            }
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                rotationZ = rotation
-                transformOrigin = TransformOrigin.Center
-            }
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                isAnimating = true
-                onClick(centerPos)
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Image(
-            painter = painterResource(id = item.imageRes),
-            contentDescription = item.name.asString(), // REPARAT: .asString()
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit
-        )
-    }
-}
-
 data class Particle(
     var x: Float, var y: Float, var vx: Float, var vy: Float,
     var size: Float, var alpha: Float, val color: Color, var rotation: Float
 ) {
     fun update() {
-        x += vx
-        y += vy
-        alpha -= 0.02f
-        size *= 0.94f
-        rotation += 8f
+        x += vx; y += vy; alpha -= 0.02f; size *= 0.94f; rotation += 8f
     }
     fun isDead() = alpha <= 0f
 }
@@ -503,17 +519,11 @@ fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStar(p: Particle) {
     val path = Path().apply {
         val half = p.size / 2
         moveTo(p.x, p.y - half)
-        lineTo(p.x + half * 0.3f, p.y - half * 0.3f)
-        lineTo(p.x + half, p.y)
-        lineTo(p.x + half * 0.3f, p.y + half * 0.3f)
-        lineTo(p.x, p.y + half)
-        lineTo(p.x - half * 0.3f, p.y + half * 0.3f)
-        lineTo(p.x - half, p.y)
-        lineTo(p.x - half * 0.3f, p.y - half * 0.3f)
+        lineTo(p.x + half * 0.3f, p.y - half * 0.3f); lineTo(p.x + half, p.y); lineTo(p.x + half * 0.3f, p.y + half * 0.3f)
+        lineTo(p.x, p.y + half); lineTo(p.x - half * 0.3f, p.y + half * 0.3f); lineTo(p.x - half, p.y); lineTo(p.x - half * 0.3f, p.y - half * 0.3f)
         close()
     }
     rotate(p.rotation, pivot = Offset(p.x, p.y)) {
         drawPath(path = path, color = p.color, alpha = p.alpha, style = Fill)
     }
 }
-

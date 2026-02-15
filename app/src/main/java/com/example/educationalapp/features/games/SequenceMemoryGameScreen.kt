@@ -1,4 +1,9 @@
 package com.example.educationalapp.features.games
+
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.MediaPlayer
+import android.media.SoundPool
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
@@ -27,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -36,7 +42,6 @@ import androidx.navigation.NavHostController
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.example.educationalapp.R
-import com.example.educationalapp.common.LocalSoundManager
 import kotlin.math.roundToInt
 
 // ================= DATE & CONFIGURARE VOLUM =================
@@ -63,6 +68,40 @@ val gameItemsData = listOf(
 
 enum class GameStatus { IDLE, SHOWING, WAITING, GAME_OVER }
 
+// ================= AUDIO ENGINE (MIXER INCLUS) =================
+class TrapSoundEngine(private val context: Context) {
+    private val soundPool: SoundPool
+    private val soundMap = mutableMapOf<String, Int>()
+    
+    private val allSounds = listOf(
+        "trap_kick_hard", "trap_snare_crisp", "trap_hihat_tick", 
+        "trap_vox_hey", "trap_melody_pluck", "trap_fx_siren",
+        "trap_sys_intro", "trap_sys_win", "trap_sys_lose", 
+        "trap_sys_hint", "math_sfx_whoosh"
+    )
+
+    init {
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_GAME)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        soundPool = SoundPool.Builder().setMaxStreams(20).setAudioAttributes(audioAttributes).build()
+        
+        allSounds.forEach { name ->
+            val resId = context.resources.getIdentifier(name, "raw", context.packageName)
+            if (resId != 0) soundMap[name] = soundPool.load(context, resId, 1)
+        }
+    }
+
+    // Redă sunetul cu volumul specificat
+    fun play(name: String, volume: Float = 1.0f) { 
+        val soundId = soundMap[name]
+        if (soundId != null) soundPool.play(soundId, volume, volume, 1, 0, 1f)
+    }
+    
+    fun release() { soundPool.release() }
+}
+
 // ================= ECRANUL PRINCIPAL =================
 @Composable
 fun SequenceMemoryGameScreen(navController: NavHostController) {
@@ -75,25 +114,23 @@ fun SequenceMemoryGameScreen(navController: NavHostController) {
     // Animație de SHAKE (Cutremur) pentru greșeală
     val shakeOffset = remember { Animatable(0f) }
 
-    val soundManager = LocalSoundManager.current
+    val context = LocalContext.current
+    val soundEngine = remember { TrapSoundEngine(context) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        // Background music + preload SFX (no first-tap silence)
-        soundManager.enterGameMode(gameMusicResId = R.raw.music_trap_loop, startVolume = 0.25f)
-        soundManager.loadSoundsByName(
-            listOf(
-                "trap_kick_hard", "trap_snare_crisp", "trap_hihat_tick",
-                "trap_vox_hey", "trap_melody_pluck", "trap_fx_siren",
-                "trap_sys_intro", "trap_sys_win", "trap_sys_lose",
-                "trap_sys_hint", "math_sfx_whoosh"
-            )
-        )
-    }
-
+    // --- Background Music ---
     DisposableEffect(Unit) {
+        val bgMusic = try {
+            MediaPlayer.create(context, R.raw.music_trap_loop).apply {
+                isLooping = true
+                setVolume(0.25f, 0.25f) // Volum mic la fundal ca să se audă tobele
+                start()
+            }
+        } catch (e: Exception) { null }
+        
         onDispose {
-            soundManager.exitGameMode()
+            try { if (bgMusic?.isPlaying == true) bgMusic.stop(); bgMusic?.release() } catch (e: Exception) {}
+            soundEngine.release()
         }
     }
 
@@ -120,7 +157,7 @@ fun SequenceMemoryGameScreen(navController: NavHostController) {
         for (index in seq) {
             highlightedIndex = index
             val item = gameItemsData[index]
-            soundManager.playSoundByName(item.soundFileName, volume = item.volume, duckMusic = false)
+            soundEngine.play(item.soundFileName, item.volume) // Folosim volumul custom
             delay(350)
             highlightedIndex = null
             delay(100)
@@ -130,7 +167,7 @@ fun SequenceMemoryGameScreen(navController: NavHostController) {
     }
 
     fun startNewGame() {
-        soundManager.playSoundByName("trap_sys_intro", duckMusic = false)
+        soundEngine.play("trap_sys_intro")
         sequence = listOf((0 until gameItemsData.size).random())
         score = 0
         scope.launch { delay(1500); playSequence(sequence) }
@@ -141,19 +178,19 @@ fun SequenceMemoryGameScreen(navController: NavHostController) {
         
         val item = gameItemsData[index]
         // Sunet instant cand apasa utilizatorul
-        soundManager.playSoundByName(item.soundFileName, volume = item.volume, duckMusic = false)
+        soundEngine.play(item.soundFileName, item.volume)
 
         if (index == sequence[userIndex]) {
             userIndex++
             if (userIndex == sequence.size) {
                 score++
-                soundManager.playSoundByName("trap_sys_win", duckMusic = false)
+                soundEngine.play("trap_sys_win")
                 sequence = sequence + (0 until gameItemsData.size).random()
                 scope.launch { delay(1000); playSequence(sequence) }
             }
         } else {
             gameStatus = GameStatus.GAME_OVER
-            soundManager.playSoundByName("trap_sys_lose", duckMusic = false)
+            soundEngine.play("trap_sys_lose")
             scope.launch { triggerShake() }
         }
     }
@@ -223,7 +260,7 @@ fun SequenceMemoryGameScreen(navController: NavHostController) {
                     modifier = Modifier
                         .size(60.dp)
                         .bounceClick {
-                            soundManager.playSoundByName("math_sfx_whoosh", duckMusic = false)
+                            soundEngine.play("math_sfx_whoosh")
                             navController.popBackStack()
                         }
                 )

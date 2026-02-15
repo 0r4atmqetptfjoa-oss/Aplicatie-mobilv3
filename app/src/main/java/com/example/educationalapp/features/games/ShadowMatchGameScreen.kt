@@ -26,7 +26,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +44,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -68,9 +68,10 @@ fun ShadowMatchGameScreen(
     viewModel: ShadowMatchViewModel = hiltViewModel(),
     onBack: () -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsState()
     val density = LocalDensity.current
     val view = LocalView.current
+    val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
     val sound = remember { AlphabetSoundPlayer(context) }
 
@@ -91,9 +92,11 @@ fun ShadowMatchGameScreen(
 
     LaunchedEffect(uiState.isLevelComplete) {
         if (uiState.isLevelComplete) {
-            sound.playCorrect()
-            delay(1200)
-            viewModel.nextLevel()
+            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+            // OPTIMIZARE: Folosim callback-ul onComplete pentru a trece la nivelul următor
+            sound.playPositive {
+                viewModel.nextLevel()
+            }
         }
     }
 
@@ -114,7 +117,7 @@ fun ShadowMatchGameScreen(
                 Image(painter = painterResource(id = R.drawable.ui_button_home), contentDescription = "Home", modifier = Modifier.size(32.dp))
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = "Găsește Umbra", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.titleLarge)
+                Text(text = "Găsește Umbra", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 Text(text = "Nivel ${uiState.level}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.9f))
             }
             Spacer(Modifier.size(56.dp))
@@ -122,7 +125,16 @@ fun ShadowMatchGameScreen(
 
         Row(modifier = Modifier.fillMaxSize().padding(top = 80.dp, start = 16.dp, end = 16.dp, bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             // BOARD
-            Column(modifier = Modifier.weight(0.6f).fillMaxHeight().clip(RoundedCornerShape(24.dp)).background(Color.White.copy(alpha = 0.2f)).border(2.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(24.dp)).padding(16.dp), verticalArrangement = Arrangement.Center) {
+            Column(
+                modifier = Modifier
+                    .weight(0.6f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color.White.copy(alpha = 0.2f))
+                    .border(2.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(24.dp))
+                    .padding(16.dp), 
+                verticalArrangement = Arrangement.Center
+            ) {
                 val rows = uiState.targets.chunked(2)
                 rows.forEach { row ->
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -143,18 +155,40 @@ fun ShadowMatchGameScreen(
             }
 
             // TRAY
-            Column(modifier = Modifier.weight(0.4f).fillMaxHeight().clip(RoundedCornerShape(24.dp)).background(Color.White.copy(alpha = 0.15f)).border(2.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(24.dp)).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween) {
-                Text(text = "Animale", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Column(
+                modifier = Modifier
+                    .weight(0.4f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color.White.copy(alpha = 0.15f))
+                    .border(2.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
+                    .padding(16.dp), 
+                horizontalAlignment = Alignment.CenterHorizontally, 
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(text = "Trage formele!", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 LazyGridLikeColumn(items = uiState.tray) { item ->
                     DraggablePiece(
                         item = item,
                         magnetRangePx = magnetRangePx,
                         snapRangePx = snapRangePx,
                         getTargetCenter = { dropZones[item.id] },
-                        onHover = { hoveredTargetId = it },
+                        onHover = { 
+                            if (hoveredTargetId != it) {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                hoveredTargetId = it 
+                            }
+                        },
                         onHoverClear = { if (hoveredTargetId == item.id) hoveredTargetId = null },
-                        onDropSuccess = { view.playSoundEffect(SoundEffectConstants.CLICK); sound.playCorrect(); viewModel.onMatched(item.id) },
-                        onDropFail = { sound.playWrong() }
+                        onDropSuccess = { 
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                            view.playSoundEffect(SoundEffectConstants.CLICK)
+                            sound.playDing()
+                            viewModel.onMatched(item.id) 
+                        },
+                        onDropFail = { 
+                            sound.playNegative()
+                        }
                     )
                 }
                 ShadowSquishyButton(onClick = { sound.playClick(); viewModel.resetGame() }, size = 64.dp) {
@@ -183,37 +217,76 @@ fun LazyGridLikeColumn(items: List<ShadowMatchItem>, content: @Composable (Shado
 
 @Composable
 private fun ShadowTarget(item: ShadowMatchItem, isHovered: Boolean, burst: Boolean, modifier: Modifier = Modifier) {
-    val burstScale by animateFloatAsState(if (burst) 1.2f else 1f, tween(300), label = "burst")
-    val pulse by rememberInfiniteTransition().animateFloat(1f, 1.05f, infiniteRepeatable(tween(1500), androidx.compose.animation.core.RepeatMode.Reverse), label = "pulse")
+    val burstScale by animateFloatAsState(if (burst) 1.25f else 1f, spring(dampingRatio = 0.5f), label = "burst")
+    val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(1f, 1.05f, infiniteRepeatable(tween(1500), androidx.compose.animation.core.RepeatMode.Reverse), label = "pulse")
 
     Box(
-        modifier = modifier.scale(if (item.isMatched) burstScale else pulse).clip(RoundedCornerShape(16.dp)).background(if (isHovered) Color.Yellow.copy(alpha = 0.3f) else Color.Transparent).padding(8.dp),
+        modifier = modifier
+            .scale(if (item.isMatched) burstScale else pulse)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (isHovered) Color.Yellow.copy(alpha = 0.4f) else Color.Transparent)
+            .padding(8.dp),
         contentAlignment = Alignment.Center
     ) {
         // UMBRA
-        Image(painter = painterResource(id = item.kind.shadowRes), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit, colorFilter = ColorFilter.tint(Color.Black.copy(alpha = 0.6f)))
+        Image(
+            painter = painterResource(id = item.kind.shadowRes), 
+            contentDescription = null, 
+            modifier = Modifier.fillMaxSize(), 
+            contentScale = ContentScale.Fit, 
+            colorFilter = ColorFilter.tint(Color.Black.copy(alpha = 0.6f))
+        )
         
         // POTRIVIRE
         if (item.isMatched) {
-            Image(painter = painterResource(id = item.kind.imageRes), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-            Image(painter = painterResource(R.drawable.ui_icon_star), contentDescription = null, modifier = Modifier.align(Alignment.TopEnd).size(32.dp).offset(x = 8.dp, y = (-8).dp))
+            Image(
+                painter = painterResource(id = item.kind.imageRes), 
+                contentDescription = null, 
+                modifier = Modifier.fillMaxSize(), 
+                contentScale = ContentScale.Fit
+            )
+            Image(
+                painter = painterResource(R.drawable.ui_icon_star), 
+                contentDescription = null, 
+                modifier = Modifier.align(Alignment.TopEnd).size(32.dp).offset(x = 8.dp, y = (-8).dp)
+            )
         }
     }
 }
 
 @Composable
-private fun DraggablePiece(item: ShadowMatchItem, magnetRangePx: Float, snapRangePx: Float, getTargetCenter: () -> Offset?, onHover: (Int) -> Unit, onHoverClear: () -> Unit, onDropSuccess: () -> Unit, onDropFail: () -> Unit) {
+private fun DraggablePiece(
+    item: ShadowMatchItem, 
+    magnetRangePx: Float, 
+    snapRangePx: Float, 
+    getTargetCenter: () -> Offset?, 
+    onHover: (Int) -> Unit, 
+    onHoverClear: () -> Unit, 
+    onDropSuccess: () -> Unit, 
+    onDropFail: () -> Unit
+) {
     var originCenter by remember { mutableStateOf<Offset?>(null) }
     var offset by remember(item.id) { mutableStateOf(Offset.Zero) }
     var dragging by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (dragging) 1.2f else 1f, tween(200), label = "lift")
+    val scale by animateFloatAsState(if (dragging) 1.25f else 1f, spring(dampingRatio = 0.6f), label = "lift")
     val rotation by animateFloatAsState(if (dragging) -10f else 0f, tween(200), label = "tilt")
 
     Box(
-        modifier = Modifier.size(100.dp).zIndex(if (dragging) 100f else 1f)
-            .onGloballyPositioned { if (!dragging) originCenter = it.positionInRoot().let { pos -> Offset(pos.x + it.size.width / 2f, pos.y + it.size.height / 2f) } }
+        modifier = Modifier
+            .size(100.dp)
+            .zIndex(if (dragging) 100f else 1f)
+            .onGloballyPositioned { 
+                if (!dragging) {
+                    val pos = it.positionInRoot()
+                    originCenter = Offset(pos.x + it.size.width / 2f, pos.y + it.size.height / 2f)
+                }
+            }
             .offset { IntOffset(offset.x.roundToInt(), offset.y.roundToInt()) }
-            .graphicsLayer { scaleX = scale; scaleY = scale; rotationZ = rotation }
+            .graphicsLayer { 
+                scaleX = scale
+                scaleY = scale
+                rotationZ = rotation
+            }
             .pointerInput(item.id) {
                 detectDragGestures(
                     onDragStart = { dragging = true },
@@ -221,25 +294,44 @@ private fun DraggablePiece(item: ShadowMatchItem, magnetRangePx: Float, snapRang
                         dragging = false
                         val target = getTargetCenter()
                         val origin = originCenter
-                        if (target != null && origin != null && hypot(origin.x + offset.x - target.x, origin.y + offset.y - target.y) <= snapRangePx) { offset = Offset.Zero; onHoverClear(); onDropSuccess() }
-                        else { offset = Offset.Zero; onHoverClear(); onDropFail() }
+                        if (target != null && origin != null && hypot(origin.x + offset.x - target.x, origin.y + offset.y - target.y) <= snapRangePx) { 
+                            offset = Offset.Zero
+                            onHoverClear()
+                            onDropSuccess() 
+                        }
+                        else { 
+                            offset = Offset.Zero
+                            onHoverClear()
+                            onDropFail() 
+                        }
                     },
-                    onDragCancel = { dragging = false; offset = Offset.Zero; onHoverClear() },
+                    onDragCancel = { 
+                        dragging = false
+                        offset = Offset.Zero
+                        onHoverClear() 
+                    },
                     onDrag = { change, dragAmount ->
                         change.consumeAllChanges()
                         offset += dragAmount
                         val target = getTargetCenter()
                         val origin = originCenter
-                        if (target != null && origin != null && hypot(origin.x + offset.x - target.x, origin.y + offset.y - target.y) <= magnetRangePx) onHover(item.id) else onHoverClear()
+                        if (target != null && origin != null && hypot(origin.x + offset.x - target.x, origin.y + offset.y - target.y) <= magnetRangePx) {
+                            onHover(item.id)
+                        } else {
+                            onHoverClear()
+                        }
                     }
                 )
             }
     ) {
-        Image(painter = painterResource(id = item.kind.imageRes), contentDescription = item.kind.label, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+        Image(
+            painter = painterResource(id = item.kind.imageRes), 
+            contentDescription = item.kind.label, 
+            modifier = Modifier.fillMaxSize(), 
+            contentScale = ContentScale.Fit
+        )
     }
 }
-
-// --- UTILS LOCALE ---
 
 @Composable
 private fun ShadowSquishyButton(onClick: () -> Unit, modifier: Modifier = Modifier, size: Dp? = null, shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp), color: Color = Color.White, elevation: Dp = 4.dp, content: @Composable BoxScope.() -> Unit) {

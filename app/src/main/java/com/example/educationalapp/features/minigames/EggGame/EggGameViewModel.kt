@@ -1,162 +1,142 @@
 package com.example.educationalapp.features.wowgames
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.educationalapp.R
-import com.example.educationalapp.di.SoundManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import kotlin.random.Random
 
-data class EggGameUiState(
-    val stage: EggStage = EggStage.INTACT,
-    val taps: Int = 0,
-    val isEggHatched: Boolean = false,
+data class EggGameState(
     val currentCreatureIndex: Int = 0,
-    val isMusicOn: Boolean = true,
-    val currentMood: CreatureMood = CreatureMood.NORMAL,
-    val hatchTrigger: Int = 0,
-    val showNextButton: Boolean = false
-) {
-    val isCreatureHappy: Boolean get() = currentMood == CreatureMood.HAPPY
-}
-
-enum class CreatureMood { NORMAL, HAPPY, SAD }
+    val stage: EggStage = EggStage.INTACT,
+    val tapsInStage: Int = 0,
+    val isCreatureHappy: Boolean = false,
+    val hatchTrigger: Int = 0, // Counter pentru a declanșa efectul vizual
+    val showNextButton: Boolean = false // Apare cu întârziere
+)
 
 @HiltViewModel
 class EggGameViewModel @Inject constructor(
-    private val soundManager: SoundManager
-) : ViewModel() {
+    application: Application
+) : AndroidViewModel(application) {
 
-    private val _uiState = MutableStateFlow(EggGameUiState(currentCreatureIndex = Random.nextInt(EggAssets.creatures.size)))
-    val uiState: StateFlow<EggGameUiState> = _uiState
+    private val audio = EggAudioManager(application.applicationContext)
+    private val _uiState = MutableStateFlow(EggGameState())
+    val uiState: StateFlow<EggGameState> = _uiState
+
+    private val tapsToCrack1 = 3
+    private val tapsToCrack2 = 4 
+    private val tapsToHatch = 5 
 
     init {
-        // Music
-        val bgm = soundManager.rawResId("bgm_egg_game").takeIf { it != 0 } ?: R.raw.math_bg_music
-        soundManager.enterGameMode(gameMusicResId = bgm, startVolume = 0.25f)
-
-        // Preload SFX
-        viewModelScope.launch(Dispatchers.IO) {
-            val base = listOf(
-                "sfx_egg_tap",
-                "sfx_egg_crack_small",
-                "sfx_egg_crack_big",
-                "sfx_egg_hatch"
-            )
-            val happy = EggAssets.creatures.map { "happy_${it.id}" }
-            soundManager.loadSoundsByName(base + happy)
-        }
-
-        // Intro voice
+        audio.startMusic()
         viewModelScope.launch {
-            delay(800)
-            soundManager.playVoiceByName("vox_egg_intro")
-        }
-    }
-
-    fun toggleMusic() {
-        val new = !_uiState.value.isMusicOn
-        _uiState.update { it.copy(isMusicOn = new) }
-        if (new) {
-            soundManager.resumeGameMusic()
-        } else {
-            soundManager.pauseGameMusic()
+            delay(500)
+            audio.playVoice("vox_egg_intro")
         }
     }
 
     fun onInteraction() {
-        onEggTapped()
-    }
-
-    fun onEggTapped() {
-        if (_uiState.value.isEggHatched) {
-            // If already hatched, maybe play happy sound on tap
-            val creature = EggAssets.creatures[_uiState.value.currentCreatureIndex]
-            soundManager.playSoundByName("happy_${creature.id}", duckMusic = false)
-            _uiState.update { it.copy(currentMood = CreatureMood.HAPPY) }
-            viewModelScope.launch {
-                delay(1500)
-                _uiState.update { it.copy(currentMood = CreatureMood.NORMAL) }
-            }
+        val state = _uiState.value
+        
+        if (state.stage == EggStage.HATCHED) {
+            interactWithCreature()
             return
         }
 
-        _uiState.update { it.copy(taps = it.taps + 1) }
-        soundManager.playSoundByName("sfx_egg_tap", duckMusic = false)
+        val newTaps = state.tapsInStage + 1
+        var nextStage = state.stage
+        var resetTaps = false
 
-        when (_uiState.value.stage) {
+        when (state.stage) {
             EggStage.INTACT -> {
-                if (_uiState.value.taps >= 5) {
-                    _uiState.update { it.copy(stage = EggStage.CRACK_1, taps = 0) }
-                    soundManager.playSoundByName("sfx_egg_crack_small", duckMusic = false)
-                    soundManager.playVoiceByName("vox_egg_crack1")
+                audio.playSFX("tap")
+                if (newTaps == 1) audio.playVoice("vox_egg_tap")
+                if (newTaps >= tapsToCrack1) {
+                    nextStage = EggStage.CRACK_1
+                    resetTaps = true
+                    audio.playSFX("crack_small")
+                    audio.playVoice("vox_egg_crack")
                 }
             }
             EggStage.CRACK_1 -> {
-                if (_uiState.value.taps >= 7) {
-                    _uiState.update { it.copy(stage = EggStage.CRACK_2, taps = 0) }
-                    soundManager.playSoundByName("sfx_egg_crack_big", duckMusic = false)
-                    soundManager.playVoiceByName("vox_egg_crack2")
+                audio.playSFX("tap")
+                if (newTaps >= tapsToCrack2) {
+                    nextStage = EggStage.CRACK_2
+                    resetTaps = true
+                    audio.playSFX("crack_big")
                 }
             }
             EggStage.CRACK_2 -> {
-                if (_uiState.value.taps >= 9) {
+                audio.playSFX("tap")
+                if (newTaps >= tapsToHatch) {
+                    nextStage = EggStage.HATCHED
+                    resetTaps = true
                     hatchEgg()
                 }
             }
-            EggStage.HATCHED -> {}
+            else -> {}
         }
+
+        _uiState.value = state.copy(
+            stage = nextStage,
+            tapsInStage = if (resetTaps) 0 else newTaps
+        )
     }
 
     private fun hatchEgg() {
-        _uiState.update { 
-            it.copy(
-                isEggHatched = true, 
-                stage = EggStage.HATCHED,
-                currentMood = CreatureMood.HAPPY,
-                hatchTrigger = it.hatchTrigger + 1,
-                showNextButton = true
-            ) 
-        }
-        val creature = EggAssets.creatures[_uiState.value.currentCreatureIndex]
-        soundManager.playSoundByName("sfx_egg_hatch", duckMusic = false)
-        soundManager.playVoiceByName("vox_egg_hatched")
-
-        // Also play the creature's "happy" jingle.
-        soundManager.playSoundByName("happy_${creature.id}", duckMusic = false)
-
+        audio.playSFX("hatch")
+        audio.playVoice("vox_egg_hatch")
+        
+        _uiState.value = _uiState.value.copy(
+            isCreatureHappy = true,
+            hatchTrigger = _uiState.value.hatchTrigger + 1 // Declanșează particulele
+        )
+        
         viewModelScope.launch {
+            // Puiul e fericit 2 secunde
             delay(2000)
-            _uiState.update { it.copy(currentMood = CreatureMood.NORMAL) }
+            _uiState.value = _uiState.value.copy(isCreatureHappy = false)
+            
+            // Abia acum arătăm butonul NEXT ca să nu fie apăsat din greșeală
+            _uiState.value = _uiState.value.copy(showNextButton = true)
+        }
+    }
+
+    private fun interactWithCreature() {
+        val creature = EggAssets.creatures[_uiState.value.currentCreatureIndex]
+        audio.playSFX("happy_${creature.id}")
+        
+        if (Math.random() < 0.4) audio.playVoice("vox_interact")
+
+        _uiState.value = _uiState.value.copy(isCreatureHappy = true)
+        viewModelScope.launch {
+            delay(1200)
+            _uiState.value = _uiState.value.copy(isCreatureHappy = false)
         }
     }
 
     fun nextLevel() {
-        resetGame()
-    }
-
-    fun resetGame() {
-        _uiState.update { 
-            EggGameUiState(
-                isMusicOn = it.isMusicOn,
-                currentCreatureIndex = Random.nextInt(EggAssets.creatures.size)
-            )
-        }
+        val nextIdx = (_uiState.value.currentCreatureIndex + 1) % EggAssets.creatures.size
+        _uiState.value = EggGameState(
+            currentCreatureIndex = nextIdx,
+            stage = EggStage.INTACT,
+            tapsInStage = 0,
+            isCreatureHappy = false,
+            showNextButton = false
+        )
+        
         viewModelScope.launch {
-            delay(300)
-            soundManager.playVoiceByName("vox_egg_intro")
+            audio.playVoice("vox_egg_intro") 
         }
     }
 
     override fun onCleared() {
-        soundManager.exitGameMode()
         super.onCleared()
+        audio.release()
     }
 }

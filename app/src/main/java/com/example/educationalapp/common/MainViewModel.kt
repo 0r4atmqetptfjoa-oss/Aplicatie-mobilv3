@@ -1,4 +1,4 @@
-package com.example.educationalapp
+package com.example.educationalapp.common
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,41 +12,79 @@ import javax.inject.Inject
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    private val prefs: UserPreferencesRepository
+    private val userPreferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
-    val starCount: StateFlow<Int> =
-        prefs.starCount.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+    // --- State-uri ---
+    val starCount: StateFlow<Int> = userPreferencesRepository.starCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val soundEnabled: StateFlow<Boolean> =
-        prefs.soundEnabled.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+    val soundEnabled: StateFlow<Boolean> = userPreferencesRepository.soundEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
-    val musicEnabled: StateFlow<Boolean> =
-        prefs.musicEnabled.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+    val musicEnabled: StateFlow<Boolean> = userPreferencesRepository.musicEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
-    val hardModeEnabled: StateFlow<Boolean> =
-        prefs.hardModeEnabled.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val hardModeEnabled: StateFlow<Boolean> = userPreferencesRepository.hardModeEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+        
+    val hapticEnabled: StateFlow<Boolean> = userPreferencesRepository.hapticEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
-    val hasFullVersion: StateFlow<Boolean> =
-        prefs.hasFullVersion.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    // ✅ FIX: isPremium este sursa adevărului. hasFullVersion e doar alias.
+    val isPremium: StateFlow<Boolean> = userPreferencesRepository.isPremium
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+        
+    val dailyTimer: StateFlow<Int> = userPreferencesRepository.dailyTimerMinutes
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    fun setStarCount(value: Int) {
-        viewModelScope.launch { prefs.setStarCount(value) }
+    // --- Acțiuni ---
+    fun setStarCount(count: Int) {
+        viewModelScope.launch {
+            userPreferencesRepository.setStarCount(count)
+        }
+    }
+    
+    // ✅ FIX: Aceasta era funcția lipsă
+    fun setHasFullVersion(hasFull: Boolean) {
+        viewModelScope.launch {
+            userPreferencesRepository.setPremiumStatus(hasFull)
+        }
     }
 
     fun toggleSound() {
-        viewModelScope.launch { prefs.setSoundEnabled(!soundEnabled.value) }
+        viewModelScope.launch {
+            userPreferencesRepository.setSoundEnabled(!soundEnabled.value)
+        }
     }
 
     fun toggleMusic() {
-        viewModelScope.launch { prefs.setMusicEnabled(!musicEnabled.value) }
+        viewModelScope.launch {
+            userPreferencesRepository.setMusicEnabled(!musicEnabled.value)
+        }
+    }
+    
+    fun toggleHaptics() {
+        viewModelScope.launch {
+            userPreferencesRepository.setHapticEnabled(!hapticEnabled.value)
+        }
     }
 
     fun toggleHardMode() {
-        viewModelScope.launch { prefs.setHardModeEnabled(!hardModeEnabled.value) }
+        viewModelScope.launch {
+            userPreferencesRepository.setHardModeEnabled(!hardModeEnabled.value)
+        }
     }
-
-    fun setHasFullVersion(value: Boolean) {
-        viewModelScope.launch { prefs.setHasFullVersion(value) }
+    
+    fun setTimer(minutes: Int) {
+        viewModelScope.launch {
+            userPreferencesRepository.setDailyTimer(minutes)
+        }
+    }
+    
+    fun activatePremium() {
+        viewModelScope.launch {
+            userPreferencesRepository.setPremiumStatus(true)
+        }
     }
 }

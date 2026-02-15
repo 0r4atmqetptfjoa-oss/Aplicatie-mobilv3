@@ -1,13 +1,11 @@
 package com.example.educationalapp.features.learning.colors
 
+import android.app.Application
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.educationalapp.R
-import com.example.educationalapp.di.SoundManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,12 +21,12 @@ data class ColorsUiState(
     val options: List<ColorItem>,
     val score: Int = 0,
     val gameState: GameState = GameState.WAITING_INPUT,
-
+    
     // Animație
     val projectileStart: Offset = Offset.Zero,
     val projectileEnd: Offset = Offset.Zero,
     val projectileColor: Color = Color.White,
-
+    
     // Stare logică
     val isAnswerCorrect: Boolean? = null,
     val wrongSelectionId: String? = null,
@@ -37,11 +35,12 @@ data class ColorsUiState(
 
 @HiltViewModel
 class ColorsGameViewModel @Inject constructor(
-    private val soundManager: SoundManager
-) : ViewModel() {
+    application: Application
+) : AndroidViewModel(application) {
 
+    private val audio = ColorsAudioManager(application.applicationContext)
+    
     private val questionQueue = ArrayDeque<ColorItem>()
-
     private val _uiState = MutableStateFlow(
         ColorsUiState(
             currentTarget = ColorsAssets.items.first(),
@@ -51,22 +50,7 @@ class ColorsGameViewModel @Inject constructor(
     val uiState: StateFlow<ColorsUiState> = _uiState
 
     init {
-        // Music
-        val bgm = soundManager.rawResId("colors_bg_music").takeIf { it != 0 } ?: R.raw.math_bg_music
-        soundManager.enterGameMode(gameMusicResId = bgm, startVolume = 0.25f)
-
-        // SFX preloading (no first-tap silence)
-        viewModelScope.launch(Dispatchers.IO) {
-            soundManager.loadSoundsByName(
-                listOf(
-                    "sfx_throw_paint",
-                    "sfx_splat",
-                    "sfx_bell_win",
-                    "sfx_wrong_buzz"
-                )
-            )
-        }
-
+        audio.startMusic()
         resetGame()
     }
 
@@ -83,7 +67,7 @@ class ColorsGameViewModel @Inject constructor(
 
         if (selectedItem.id == target.id) {
             // --- RĂSPUNS CORECT ---
-
+            
             // 1. Spargem balonul și lansăm proiectilul
             _uiState.value = _uiState.value.copy(
                 gameState = GameState.PROJECTILE_FLYING,
@@ -93,35 +77,35 @@ class ColorsGameViewModel @Inject constructor(
                 isAnswerCorrect = true,
                 poppedBalloonId = selectedItem.id
             )
-
-            soundManager.playSoundByName("sfx_throw_paint", rate = 1.2f)
+            
+            audio.playSFX(audio.sfxThrow, rate = 1.2f)
 
             viewModelScope.launch {
                 // Zborul vopselei
                 delay(PROJECTILE_DURATION)
-
+                
                 // 2. IMPACT (Splat + Colorare Personaj)
                 _uiState.value = _uiState.value.copy(
                     gameState = GameState.IMPACT,
                     score = _uiState.value.score + 10
                 )
+                audio.playSFX(audio.sfxSplat)
+                audio.playSFX(audio.sfxWin)
+                
+                delay(500) 
 
-                soundManager.playSoundByName("sfx_splat")
-                soundManager.playSoundByName("sfx_bell_win")
-
-                // Așteptăm puțin să se vadă efectul de splat
-                delay(500)
-
-                // 3. CELEBRATE (Voce) - fără "delay" hardcodat: așteptăm fix cât durează speech.
+                // 3. CELEBRATE (Voce)
                 _uiState.value = _uiState.value.copy(gameState = GameState.CELEBRATE)
-                soundManager.playVoiceByNameAndWait(target.audioWinRes)
-
-                // 4. NEXT
-                nextQuestion()
+                
+                // OPTIMIZARE: Folosim callback-ul onComplete pentru a trece la următoarea întrebare
+                // imediat ce se termină de rostit feedback-ul audio.
+                audio.playVoice(target.audioWinRes) {
+                    nextQuestion()
+                }
             }
         } else {
             // --- RĂSPUNS GREȘIT ---
-            soundManager.playSoundByName("sfx_wrong_buzz")
+            audio.playSFX(audio.sfxWrong)
             _uiState.value = _uiState.value.copy(wrongSelectionId = selectedItem.id)
             viewModelScope.launch {
                 delay(500)
@@ -133,8 +117,7 @@ class ColorsGameViewModel @Inject constructor(
     private fun nextQuestion() {
         val nextTarget = getNextTargetFromQueue()
         val allItems = ColorsAssets.items
-
-        // Logică distractori unici (fără dubluri de culoare)
+        
         val distractors = allItems
             .filter { it.colorValue != nextTarget.colorValue }
             .shuffled()
@@ -154,7 +137,7 @@ class ColorsGameViewModel @Inject constructor(
 
         viewModelScope.launch {
             delay(500)
-            soundManager.playVoiceByName(nextTarget.audioQuestRes)
+            audio.playVoice(nextTarget.audioQuestRes)
         }
     }
 
@@ -166,8 +149,7 @@ class ColorsGameViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        // Stop in-game music when leaving this destination.
-        soundManager.exitGameMode()
         super.onCleared()
+        audio.release()
     }
 }

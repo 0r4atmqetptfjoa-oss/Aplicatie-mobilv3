@@ -1,6 +1,7 @@
 package com.example.educationalapp.features.learning.shapes
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
@@ -9,32 +10,36 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-// Definim stările exacte pentru reacția robotului
 enum class GameState { 
-    WAITING_INPUT,    // Robot normal (așteaptă)
-    CORRECT_FEEDBACK, // Robot Happy (tăblița sus)
-    WRONG_FEEDBACK    // Robot Sad (tăblița jos)
+    WAITING_INPUT,    
+    CORRECT_FEEDBACK, 
+    WRONG_FEEDBACK    
 }
 
 data class ShapesUiState(
     val targetShape: ShapeType,
     val options: List<ShapeItem>,
-    val targetItem: ShapeItem, // Avem nevoie de itemul specific pt audio
+    val targetItem: ShapeItem, 
     val score: Int = 0,
     val gameState: GameState = GameState.WAITING_INPUT,
     val wrongSelectionId: String? = null
 )
 
 @HiltViewModel
-class ShapesViewModel @Inject constructor() : ViewModel() {
+class ShapesViewModel @Inject constructor(
+    application: Application
+) : AndroidViewModel(application) {
 
     private val shapeQueue = ArrayDeque<ShapeType>()
     
-    // Inițializare dummy, se suprascrie în init
     private val _uiState = MutableStateFlow(
         ShapesUiState(ShapeType.CIRCLE, emptyList(), ShapesAssets.allItems[0])
     )
     val uiState: StateFlow<ShapesUiState> = _uiState
+    
+    // Adăugăm un handler pentru audio în ViewModel (sau îl lăsăm în Screen dacă preferi, 
+    // dar pentru onComplete e mai curat să avem un semnal aici)
+    private var onAudioComplete: (() -> Unit)? = null
 
     init {
         refillQueue()
@@ -43,7 +48,6 @@ class ShapesViewModel @Inject constructor() : ViewModel() {
 
     private fun refillQueue() {
         val allShapes = ShapeType.values().toList()
-        // Punem de două ori formele și le amestecăm
         shapeQueue.addAll((allShapes + allShapes).shuffled())
     }
 
@@ -58,12 +62,7 @@ class ShapesViewModel @Inject constructor() : ViewModel() {
                 score = _uiState.value.score + 10,
                 wrongSelectionId = null
             )
-            
-            viewModelScope.launch {
-                // Așteptăm 4.5 secunde (cât durează "Bravo" + explicația)
-                delay(4500)
-                nextRound()
-            }
+            // Nu mai folosim delay(4500), așteptăm semnalul de la Screen/Audio
         } else {
             _uiState.value = _uiState.value.copy(
                 gameState = GameState.WRONG_FEEDBACK,
@@ -71,13 +70,20 @@ class ShapesViewModel @Inject constructor() : ViewModel() {
             )
             
             viewModelScope.launch {
-                // Așteptăm 1.5 secunde pt feedback negativ
-                delay(1500)
-                _uiState.value = _uiState.value.copy(
-                    gameState = GameState.WAITING_INPUT,
-                    wrongSelectionId = null
-                )
+                delay(2000) // Feedback-ul de eroare poate rămâne cu un mic delay fix
+                if (_uiState.value.gameState == GameState.WRONG_FEEDBACK) {
+                    _uiState.value = _uiState.value.copy(
+                        gameState = GameState.WAITING_INPUT,
+                        wrongSelectionId = null
+                    )
+                }
             }
+        }
+    }
+
+    fun onFeedbackFinished() {
+        if (_uiState.value.gameState == GameState.CORRECT_FEEDBACK) {
+            nextRound()
         }
     }
 

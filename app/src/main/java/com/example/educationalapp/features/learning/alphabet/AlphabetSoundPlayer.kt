@@ -7,7 +7,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.datasource.RawResourceDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import com.example.educationalapp.R
 import java.text.Normalizer
 
 class AlphabetSoundPlayer(private val context: Context) {
@@ -15,11 +14,13 @@ class AlphabetSoundPlayer(private val context: Context) {
     private var player: ExoPlayer? = null
     
     private val voiceVolume = 1.0f
-    private val fxVolume = 0.6f // FX un pic mai incet
+    private val fxVolume = 0.6f
     
     private var queuedResId: Int? = null
     private var queuedVolume: Float = fxVolume
     private var listenerAttached = false
+    
+    private var onCompleteCallback: (() -> Unit)? = null
 
     var isEnabled: Boolean = true
         set(value) {
@@ -43,11 +44,17 @@ class AlphabetSoundPlayer(private val context: Context) {
             p.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_ENDED) {
+                        val callback = onCompleteCallback
+                        onCompleteCallback = null
+                        
                         val next = queuedResId
                         val nextVol = queuedVolume
                         queuedResId = null
+                        
                         if (next != null) {
                             playSound(next, volume = nextVol, queueIfBusy = false)
+                        } else {
+                            callback?.invoke()
                         }
                     }
                 }
@@ -58,67 +65,107 @@ class AlphabetSoundPlayer(private val context: Context) {
         return p
     }
 
-    // --- 1. LITERE ---
-    fun playLetterSound(letter: String) {
-        if (!isEnabled) return
+    fun playLetterSound(letter: String, onComplete: (() -> Unit)? = null) {
+        if (!isEnabled) {
+            onComplete?.invoke()
+            return
+        }
         val resName = "litera_${letter.lowercase()}_ro"
         val resId = context.resources.getIdentifier(resName, "raw", context.packageName)
-        if (resId != 0) playSound(resId, volume = voiceVolume, queueIfBusy = false)
-    }
-
-    // --- 2. CUVINTE ---
-    fun playWordSound(word: String) {
-        if (!isEnabled) return
-        val key = sanitizeKey(word)
-        val resId = context.resources.getIdentifier(key, "raw", context.packageName)
-        
-        // FORCE PLAY: Oprește orice altceva (inclusiv Bravo vechi) și spune cuvântul
         if (resId != 0) {
+            onCompleteCallback = onComplete
             playSound(resId, volume = voiceVolume, queueIfBusy = false)
         } else {
-            // Fallback
-            val altId = context.resources.getIdentifier("cuvant_${key}_ro", "raw", context.packageName)
-            if (altId != 0) playSound(altId, volume = voiceVolume, queueIfBusy = false)
+            onComplete?.invoke()
         }
     }
 
-    // --- 3. FEEDBACK "BRAVO" (Voice) ---
-    fun playPositive() {
-        if (!isEnabled) return
-        val id = context.resources.getIdentifier("bravo", "raw", context.packageName)
-        // QUEUE: Așteaptă să termine cuvântul de vorbit
-        if (id != 0) playSound(id, volume = 0.9f, queueIfBusy = true)
+    fun playWordSound(word: String, onComplete: (() -> Unit)? = null) {
+        if (!isEnabled) {
+            onComplete?.invoke()
+            return
+        }
+        val key = sanitizeKey(word)
+        var resId = context.resources.getIdentifier(key, "raw", context.packageName)
+        if (resId == 0) {
+            resId = context.resources.getIdentifier("cuvant_${key}_ro", "raw", context.packageName)
+        }
+        
+        if (resId != 0) {
+            onCompleteCallback = onComplete
+            playSound(resId, volume = voiceVolume, queueIfBusy = false)
+        } else {
+            onComplete?.invoke()
+        }
     }
 
-    // --- 4. FEEDBACK "DING" (SFX Scurt) ---
-    fun playDing() {
-        if (!isEnabled) return
-        // Încearcă sfx_correct sau sfx_magic_chime
+    fun playPositive(onComplete: (() -> Unit)? = null) {
+        if (!isEnabled) {
+            onComplete?.invoke()
+            return
+        }
+        val id = context.resources.getIdentifier("bravo", "raw", context.packageName)
+        if (id != 0) {
+            onCompleteCallback = onComplete
+            playSound(id, volume = 0.9f, queueIfBusy = true)
+        } else {
+            onComplete?.invoke()
+        }
+    }
+
+    fun playDing(onComplete: (() -> Unit)? = null) {
+        if (!isEnabled) {
+            onComplete?.invoke()
+            return
+        }
         var id = context.resources.getIdentifier("sfx_correct", "raw", context.packageName)
         if (id == 0) id = context.resources.getIdentifier("sfx_magic_chime", "raw", context.packageName)
         
-        // QUEUE: Așteaptă să termine cuvântul
-        if (id != 0) playSound(id, volume = 0.5f, queueIfBusy = true)
+        if (id != 0) {
+            onCompleteCallback = onComplete
+            playSound(id, volume = 0.5f, queueIfBusy = true)
+        } else {
+            onComplete?.invoke()
+        }
     }
 
-    // --- 5. FEEDBACK NEGATIV ---
-    fun playNegative() {
-        if (!isEnabled) return
+    fun playNegative(onComplete: (() -> Unit)? = null) {
+        if (!isEnabled) {
+            onComplete?.invoke()
+            return
+        }
         val id = context.resources.getIdentifier("mai_incearca_odata", "raw", context.packageName)
-        if (id != 0) playSound(id, volume = 0.9f, queueIfBusy = false)
+        if (id != 0) {
+            onCompleteCallback = onComplete
+            playSound(id, volume = 0.9f, queueIfBusy = false)
+        } else {
+            onComplete?.invoke()
+        }
     }
 
-    fun playFinish() {
-        if (!isEnabled) return
+    fun playFinish(onComplete: (() -> Unit)? = null) {
+        if (!isEnabled) {
+            onComplete?.invoke()
+            return
+        }
         val id = context.resources.getIdentifier("falicitari_ai_terminat_jocul", "raw", context.packageName)
-        if (id != 0) playSound(id, volume = 1.0f, queueIfBusy = true)
+        if (id != 0) {
+            onCompleteCallback = onComplete
+            playSound(id, volume = 1.0f, queueIfBusy = true)
+        } else {
+            onComplete?.invoke()
+        }
     }
 
-    // Compatibilitate
+    // --- COMPATIBILITATE PENTRU ALTE MODULE ---
     fun playCorrect() = playPositive()
     fun playWrong() = playNegative()
+    fun playClick() {
+        // Redăm un sunet scurt de click dacă există
+        val id = context.resources.getIdentifier("sfx_click", "raw", context.packageName)
+        if (id != 0) playSound(id, volume = 0.4f, queueIfBusy = false)
+    }
     fun release() = stop()
-    fun playClick() { /* opțional */ }
 
     private fun playSound(resId: Int, volume: Float, queueIfBusy: Boolean) {
         try {
@@ -136,12 +183,17 @@ class AlphabetSoundPlayer(private val context: Context) {
             p.setMediaItem(MediaItem.fromUri(uri))
             p.prepare()
             p.playWhenReady = true
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) { 
+            e.printStackTrace()
+            onCompleteCallback?.invoke()
+            onCompleteCallback = null
+        }
     }
 
     fun stop() {
         try {
             queuedResId = null
+            onCompleteCallback = null
             player?.stop()
             player?.clearMediaItems()
             player?.release()

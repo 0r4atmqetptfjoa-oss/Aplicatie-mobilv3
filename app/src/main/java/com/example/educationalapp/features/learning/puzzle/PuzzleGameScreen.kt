@@ -4,6 +4,8 @@ import android.view.SoundEffectConstants
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -35,17 +37,20 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.educationalapp.R
+import com.example.educationalapp.alphabet.AlphabetSoundPlayer
 import kotlinx.coroutines.delay
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -65,24 +70,21 @@ fun PuzzleGameScreen(
     viewModel: PuzzleViewModel = hiltViewModel(),
     onBack: () -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
+    val uiState by viewModel.uiState.collectAsState()
+    val ctx = LocalContext.current
     val density = LocalDensity.current
     val view = LocalView.current
+    val haptic = LocalHapticFeedback.current
+    val soundPlayer = remember { AlphabetSoundPlayer(ctx) }
 
     var boardOffset by remember { mutableStateOf(Offset.Zero) }
     var boardSizePx by remember { mutableStateOf(Size.Zero) }
-
     var trayWidthPx by remember { mutableStateOf(0f) }
-    val gapDp = 12.dp
-    val gapPx = with(density) { gapDp.toPx() }
-
+    val gapPx = with(density) { 12.dp.toPx() }
     var draggingId by remember { mutableStateOf<Int?>(null) }
-
     val particles = remember { mutableStateListOf<Particle>() }
     var prevLocked by remember { mutableStateOf(setOf<Int>()) }
 
-    // Update particles (compatibilitate: delay)
     LaunchedEffect(Unit) {
         while (true) {
             delay(16L)
@@ -90,7 +92,6 @@ fun PuzzleGameScreen(
             val dt = 0.016f
             val gravity = 1200f
             val friction = 0.985f
-
             val it = particles.listIterator()
             while (it.hasNext()) {
                 val p = it.next()
@@ -105,409 +106,110 @@ fun PuzzleGameScreen(
         }
     }
 
-    // Sparkle on lock + confetti on complete
     LaunchedEffect(uiState.pieces, uiState.isComplete, boardOffset) {
         val lockedNow = uiState.pieces.filter { it.isLocked }.map { it.id }.toSet()
         val newlyLocked = lockedNow - prevLocked
         if (newlyLocked.isNotEmpty()) {
             newlyLocked.forEach { id ->
                 val p = uiState.pieces.firstOrNull { it.id == id } ?: return@forEach
-                val cx = boardOffset.x + p.targetX + p.width / 2f
-                val cy = boardOffset.y + p.targetY + p.height / 2f
-                spawnSparkle(particles, cx, cy)
+                spawnSparkle(particles, boardOffset.x + p.targetX + p.width/2f, boardOffset.y + p.targetY + p.height/2f)
                 view.playSoundEffect(SoundEffectConstants.CLICK)
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                soundPlayer.playDing()
             }
         }
         prevLocked = lockedNow
-
         if (uiState.isComplete && boardSizePx != Size.Zero) {
             spawnConfetti(particles, boardOffset.x, boardOffset.y, boardSizePx.width, boardSizePx.height)
+            soundPlayer.playPositive()
         }
     }
 
-    // Auto-start / auto-next when layout is ready
     var startedLayoutKey by remember { mutableStateOf("") }
     LaunchedEffect(boardSizePx, trayWidthPx) {
-        // Safe check: pornim doar dacă avem dimensiuni valide
         if (boardSizePx.width > 10f && boardSizePx.height > 10f && trayWidthPx > 10f) {
             val key = "${boardSizePx.width.toInt()}x${boardSizePx.height.toInt()}_${trayWidthPx.toInt()}"
             if (key != startedLayoutKey) {
                 startedLayoutKey = key
-                viewModel.startGame(
-                    context = context,
-                    boardWidth = boardSizePx.width,
-                    boardHeight = boardSizePx.height,
-                    trayStartX = boardSizePx.width + gapPx,
-                    trayWidth = trayWidthPx,
-                    trayHeight = boardSizePx.height
-                )
+                viewModel.startGame(ctx, boardSizePx.width, boardSizePx.height, boardSizePx.width + gapPx, trayWidthPx, boardSizePx.height)
             }
         }
     }
 
     LaunchedEffect(uiState.isComplete) {
         if (uiState.isComplete && boardSizePx != Size.Zero && trayWidthPx > 0f) {
-            delay(900L)
-            viewModel.startGame(
-                context = context,
-                boardWidth = boardSizePx.width,
-                boardHeight = boardSizePx.height,
-                trayStartX = boardSizePx.width + gapPx,
-                trayWidth = trayWidthPx,
-                trayHeight = boardSizePx.height
-            )
+            delay(2000L)
+            viewModel.startGame(ctx, boardSizePx.width, boardSizePx.height, boardSizePx.width + gapPx, trayWidthPx, boardSizePx.height)
         }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        Image(painter = painterResource(id = R.drawable.bg_puzzle_table), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        Image(painter = painterResource(id = R.drawable.ui_btn_home), contentDescription = "Back", modifier = Modifier.align(Alignment.TopEnd).padding(14.dp).size(56.dp).zIndex(10000f).clickableNoIndication { soundPlayer.playClick(); onBack() })
 
-        Image(
-            painter = painterResource(id = R.drawable.bg_puzzle_table),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
-
-        // Back (home)
-        Image(
-            painter = painterResource(id = R.drawable.ui_btn_home),
-            contentDescription = "Back",
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(14.dp)
-                .size(56.dp)
-                .zIndex(10000f)
-                .clickableNoIndication { onBack() }
-        )
-
-        val outerPad = 12.dp
-
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(outerPad)
-        ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(12.dp)) {
             val trayWdp: Dp = minOf(320.dp, maxOf(220.dp, maxWidth * 0.26f))
             trayWidthPx = with(density) { trayWdp.toPx() }
-
-            val availW = maxWidth - trayWdp - gapDp
-            val availH = maxHeight
-
+            val availW = maxWidth - trayWdp - 12.dp
             val aspect = 4f / 3f
             var boardW = availW
             var boardH = boardW / aspect
-            if (boardH > availH) {
-                boardH = availH
-                boardW = boardH * aspect
-            }
+            if (boardH > maxHeight) { boardH = maxHeight; boardW = boardH * aspect }
 
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.spacedBy(gapDp),
-                verticalAlignment = Alignment.Top
-            ) {
-
-                // BOARD
-                BoardBox(
-                    modifier = Modifier.size(boardW, boardH),
-                    themeResId = uiState.currentThemeResId,
-                    pieces = uiState.pieces,
-                    onGloballyPositioned = { offset, size ->
-                        // FIX CRITIC: Actualizăm doar dacă s-a schimbat, 
-                        // altfel intrăm în buclă infinită de recomposition (ANR)
-                        if (boardOffset != offset) boardOffset = offset
-                        if (boardSizePx != size) boardSizePx = size
-                    }
-                )
-
-                // TRAY (HUD only, pieces are drawn in overlay)
-                TrayBox(
-                    modifier = Modifier
-                        .width(trayWdp)
-                        .height(boardH),
-                    remaining = uiState.pieces.count { !it.isLocked },
-                    onShuffle = { viewModel.shuffleTray() }
-                )
+            Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+                BoardBox(modifier = Modifier.size(boardW, boardH), themeResId = uiState.currentThemeResId, pieces = uiState.pieces, onGloballyPositioned = { offset, size -> if (boardOffset != offset) boardOffset = offset; if (boardSizePx != size) boardSizePx = size })
+                TrayBox(modifier = Modifier.width(trayWdp).height(boardH), remaining = uiState.pieces.count { !it.isLocked }, onShuffle = { soundPlayer.playClick(); viewModel.shuffleTray() })
             }
         }
 
-        // PARTICLES + PIECES overlay in root-space
         if (!uiState.isLoading && boardSizePx != Size.Zero) {
-
-            val trayScale = remember(trayWidthPx, boardSizePx.height, uiState.pieces.size) {
-                if (trayWidthPx <= 0f || boardSizePx.height <= 0f || uiState.pieces.isEmpty()) 0.75f
-                else {
-                    val cellW = trayWidthPx / 2f
-                    val cellH = boardSizePx.height / 8f
-                    val p = uiState.pieces.first()
-                    val sx = (cellW * 0.92f) / p.width.toFloat()
-                    val sy = (cellH * 0.92f) / p.height.toFloat()
-                    min(0.85f, maxOf(0.55f, min(sx, sy)))
-                }
-            }
-
-            // Particles
-            Canvas(modifier = Modifier.fillMaxSize().zIndex(500f)) {
-                particles.forEach { p ->
-                    drawCircle(
-                        color = Color.White.copy(alpha = (p.life / 0.9f).coerceIn(0f, 1f)),
-                        radius = p.size,
-                        center = Offset(p.x, p.y)
-                    )
-                }
-            }
-
-            // Pieces
+            val trayScale = remember(trayWidthPx, boardSizePx.height, uiState.pieces.size) { if (trayWidthPx <= 0f || boardSizePx.height <= 0f || uiState.pieces.isEmpty()) 0.75f else { val p = uiState.pieces.first(); val sx = (trayWidthPx/2f * 0.92f) / p.width.toFloat(); val sy = (boardSizePx.height/8f * 0.92f) / p.height.toFloat(); min(0.85f, maxOf(0.55f, min(sx, sy))) } }
+            Canvas(modifier = Modifier.fillMaxSize().zIndex(500f)) { particles.forEach { p -> drawCircle(color = Color.White.copy(alpha = (p.life / 0.9f).coerceIn(0f, 1f)), radius = p.size, center = Offset(p.x, p.y)) } }
             uiState.pieces.forEach { piece ->
                 val isDragging = draggingId == piece.id
                 val inTray = !piece.isLocked && piece.currentX >= (uiState.trayStartX - 4f)
-
-                val scaleTarget = when {
-                    isDragging -> 1.06f
-                    inTray -> trayScale
-                    else -> 1f
-                }
-                val scale by animateFloatAsState(
-                    targetValue = scaleTarget,
-                    animationSpec = tween<Float>(durationMillis = 140),
-                    label = "scale"
-                )
-
-                val rotTarget = if (isDragging) (if (piece.id % 2 == 0) 1.8f else -1.8f) else 0f
-                val rot by animateFloatAsState(
-                    targetValue = rotTarget,
-                    animationSpec = tween<Float>(durationMillis = 160),
-                    label = "rot"
-                )
-
-                val elevation by animateDpAsState(
-                    targetValue = if (isDragging) 18.dp else if (inTray) 6.dp else 10.dp,
-                    animationSpec = tween<Dp>(durationMillis = 140),
-                    label = "elev"
-                )
-
-                val absX = boardOffset.x + piece.currentX
-                val absY = boardOffset.y + piece.currentY
-
-                val wDp = with(density) { piece.width.toDp() }
-                val hDp = with(density) { piece.height.toDp() }
+                val scale by animateFloatAsState(if (isDragging) 1.1f else if (inTray) trayScale else 1f, tween(140))
+                val rot by animateFloatAsState(if (isDragging) (if (piece.id % 2 == 0) 2f else -2f) else 0f, tween(160))
+                val elevation by animateDpAsState(if (isDragging) 20.dp else if (inTray) 4.dp else 8.dp, tween(140))
                 val shape = PuzzleShape(piece.config)
-
-                Image(
-                    bitmap = piece.bitmap,
-                    contentDescription = null,
-                    contentScale = ContentScale.FillBounds,
-                    modifier = Modifier
-                        .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) }
-                        .size(wDp, hDp)
-                        .zIndex(if (isDragging) 2000f else piece.id.toFloat())
-                        .shadow(elevation, shape, clip = false)
-                        .clip(shape)
-                        .border(
-                            width = 2.dp,
-                            color = if (piece.isLocked) Color.White.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.88f),
-                            shape = shape
-                        )
-                        .pointerInput(piece.id, piece.isLocked) {
-                            if (!piece.isLocked) {
-                                detectDragGestures(
-                                    onDragStart = {
-                                        draggingId = piece.id
-                                        viewModel.onPiecePickUp(piece.id)
-                                    },
-                                    onDragEnd = {
-                                        viewModel.onPieceDrop(piece.id)
-                                        draggingId = null
-                                    },
-                                    onDragCancel = {
-                                        viewModel.onPieceDrop(piece.id)
-                                        draggingId = null
-                                    }
-                                ) { _, dragAmount ->
-                                    viewModel.onPieceDrag(piece.id, dragAmount.x, dragAmount.y)
-                                }
-                            }
-                        }
-                        .graphicsLayer(
-                            scaleX = scale,
-                            scaleY = scale,
-                            rotationZ = rot
-                        )
-                )
+                Image(bitmap = piece.bitmap, contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.offset { IntOffset((boardOffset.x + piece.currentX).roundToInt(), (boardOffset.y + piece.currentY).roundToInt()) }.size(with(density){piece.width.toDp()}, with(density){piece.height.toDp()}).zIndex(if (isDragging) 2000f else piece.id.toFloat()).shadow(elevation, shape, clip = false).clip(shape).border(width = 2.dp, color = Color.White.copy(if (piece.isLocked) 0.4f else 0.8f), shape = shape).pointerInput(piece.id, piece.isLocked) { if (!piece.isLocked) detectDragGestures(onDragStart = { draggingId = piece.id; viewModel.onPiecePickUp(piece.id) }, onDragEnd = { viewModel.onPieceDrop(piece.id); draggingId = null }, onDragCancel = { viewModel.onPieceDrop(piece.id); draggingId = null }) { _, dragAmount -> viewModel.onPieceDrag(piece.id, dragAmount.x, dragAmount.y) } }.graphicsLayer(scaleX = scale, scaleY = scale, rotationZ = rot))
             }
         }
-
-        if (uiState.isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.65f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Se încarcă...", color = Color.White)
-            }
-        }
+        if (uiState.isLoading) Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(0.6f)), contentAlignment = Alignment.Center) { Text("Se încarcă...", color = Color.White) }
     }
 }
 
 @Composable
-private fun BoardBox(
-    modifier: Modifier,
-    themeResId: Int,
-    pieces: List<PuzzlePiece>,
-    onGloballyPositioned: (offset: Offset, size: Size) -> Unit
-) {
-    Box(
-        modifier = modifier
-            .shadow(14.dp, RoundedCornerShape(18.dp))
-            .background(Color.Black.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
-            .border(2.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(18.dp))
-            .clip(RoundedCornerShape(18.dp))
-            .onGloballyPositioned { coordinates ->
-                val s = coordinates.size
-                if (s.width > 0 && s.height > 0) {
-                    onGloballyPositioned(coordinates.localToRoot(Offset.Zero), Size(s.width.toFloat(), s.height.toFloat()))
-                }
-            }
-    ) {
-        // Hint image: desaturat + alpha
-        if (themeResId != 0) {
-            val cm = remember {
-                ColorMatrix().apply { setToSaturation(0.15f) }
-            }
-            Image(
-                painter = painterResource(id = themeResId),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize().alpha(0.24f),
-                contentScale = ContentScale.Crop,
-                colorFilter = ColorFilter.colorMatrix(cm)
-            )
-            Box(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.06f)))
-        }
-
-        // Grid 4x4 + outline targets
+private fun BoardBox(modifier: Modifier, themeResId: Int, pieces: List<PuzzlePiece>, onGloballyPositioned: (Offset, Size) -> Unit) {
+    Box(modifier = modifier.shadow(14.dp, RoundedCornerShape(18.dp)).background(Color.Black.copy(0.2f), RoundedCornerShape(18.dp)).border(2.dp, Color.White.copy(0.2f), RoundedCornerShape(18.dp)).clip(RoundedCornerShape(18.dp)).onGloballyPositioned { if (it.size.width > 0) onGloballyPositioned(it.positionInRoot(), Size(it.size.width.toFloat(), it.size.height.toFloat())) }) {
+        if (themeResId != 0) { Image(painter = painterResource(id = themeResId), contentDescription = null, modifier = Modifier.fillMaxSize().alpha(0.2f), contentScale = ContentScale.Crop, colorFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0.1f) })) }
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val cols = 4
-            val rows = 4
-            val cellW = size.width / cols
-            val cellH = size.height / rows
-
-            for (i in 1 until cols) {
-                val x = i * cellW
-                drawLine(
-                    color = Color.White.copy(alpha = 0.18f),
-                    start = Offset(x, 0f),
-                    end = Offset(x, size.height),
-                    strokeWidth = 2f
-                )
-            }
-            for (j in 1 until rows) {
-                val y = j * cellH
-                drawLine(
-                    color = Color.White.copy(alpha = 0.18f),
-                    start = Offset(0f, y),
-                    end = Offset(size.width, y),
-                    strokeWidth = 2f
-                )
-            }
-
+            val cellW = size.width/4f; val cellH = size.height/4f
+            for (i in 1..3) { drawLine(Color.White.copy(0.1f), Offset(i*cellW, 0f), Offset(i*cellW, size.height), 1f); drawLine(Color.White.copy(0.1f), Offset(0f, i*cellH), Offset(size.width, i*cellH), 1f) }
             pieces.filter { !it.isLocked }.forEach { piece ->
-                val outline = PuzzleShape(piece.config).createOutline(
-                    size = Size(piece.width.toFloat(), piece.height.toFloat()),
-                    layoutDirection = layoutDirection,
-                    density = this
-                )
-                if (outline is Outline.Generic) {
-                    val p = Path()
-                    // FIX: Folosim Offset pentru a muta path-ul
-                    p.addPath(outline.path, Offset(piece.targetX, piece.targetY))
-                    drawPath(
-                        path = p,
-                        color = Color.White.copy(alpha = 0.25f),
-                        style = Stroke(width = 2.6f)
-                    )
-                }
+                val outline = PuzzleShape(piece.config).createOutline(Size(piece.width.toFloat(), piece.height.toFloat()), layoutDirection, this)
+                if (outline is Outline.Generic) { val p = Path(); p.addPath(outline.path, Offset(piece.targetX, piece.targetY)); drawPath(p, Color.White.copy(0.2f), style = Stroke(2f)) }
             }
         }
     }
 }
 
 @Composable
-private fun TrayBox(
-    modifier: Modifier,
-    remaining: Int,
-    onShuffle: () -> Unit
-) {
-    Box(
-        modifier = modifier
-            .shadow(10.dp, RoundedCornerShape(18.dp))
-            .background(Color.Black.copy(alpha = 0.20f), RoundedCornerShape(18.dp))
-            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
-            .clip(RoundedCornerShape(18.dp))
-            .padding(12.dp)
-    ) {
+private fun TrayBox(modifier: Modifier, remaining: Int, onShuffle: () -> Unit) {
+    Box(modifier = modifier.shadow(10.dp, RoundedCornerShape(18.dp)).background(Color.Black.copy(0.2f), RoundedCornerShape(18.dp)).border(1.dp, Color.White.copy(0.15f), RoundedCornerShape(18.dp)).clip(RoundedCornerShape(18.dp)).padding(12.dp)) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "Piese: $remaining/16", color = Color.White.copy(alpha = 0.92f))
-                Spacer(modifier = Modifier.weight(1f))
-                Button(
-                    onClick = onShuffle,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C2C2C))
-                ) {
-                    Text("Shuffle", color = Color.White)
-                }
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = "Trage piesele din grilă în tablă.\nSe fixează automat când ești aproape.",
-                color = Color.White.copy(alpha = 0.72f)
-            )
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Piese: $remaining/16", color = Color.White.copy(0.9f)); Spacer(Modifier.weight(1f)); Button(onClick = onShuffle, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)), shape = RoundedCornerShape(8.dp)) { Text("Shuffle", fontSize = 12.sp) } }
+            Spacer(Modifier.height(8.dp)); Text("Trage piesele pe tablă!", color = Color.White.copy(0.6f), fontSize = 13.sp)
         }
     }
 }
 
 private fun spawnSparkle(particles: MutableList<Particle>, x: Float, y: Float) {
-    repeat(14) {
-        val a = Random.nextFloat() * (Math.PI.toFloat() * 2f)
-        val sp = 280f + Random.nextFloat() * 520f
-        particles.add(
-            Particle(
-                x = x,
-                y = y,
-                vx = kotlin.math.cos(a) * sp,
-                vy = kotlin.math.sin(a) * sp - 420f,
-                life = 0.55f + Random.nextFloat() * 0.25f,
-                size = 3f + Random.nextFloat() * 4f
-            )
-        )
-    }
+    repeat(12) { val a = Random.nextFloat() * 6.28f; val sp = 250f + Random.nextFloat() * 400f; particles.add(Particle(x, y, kotlin.math.cos(a)*sp, kotlin.math.sin(a)*sp - 300f, 0.5f + Random.nextFloat()*0.2f, 3f + Random.nextFloat()*3f)) }
 }
 
 private fun spawnConfetti(particles: MutableList<Particle>, bx: Float, by: Float, bw: Float, bh: Float) {
-    repeat(120) {
-        val x = bx + Random.nextFloat() * bw
-        val y = by + Random.nextFloat() * (bh * 0.25f)
-        val vx = -400f + Random.nextFloat() * 800f
-        val vy = -1100f + Random.nextFloat() * 300f
-        particles.add(
-            Particle(
-                x = x,
-                y = y,
-                vx = vx,
-                vy = vy,
-                life = 0.9f + Random.nextFloat() * 0.7f,
-                size = 3f + Random.nextFloat() * 5f
-            )
-        )
-    }
+    repeat(100) { particles.add(Particle(bx + Random.nextFloat()*bw, by + Random.nextFloat()*bh*0.2f, -300f + Random.nextFloat()*600f, -900f + Random.nextFloat()*300f, 0.8f + Random.nextFloat()*0.6f, 3f + Random.nextFloat()*4f)) }
 }
 
-private fun Modifier.clickableNoIndication(onClick: () -> Unit): Modifier = composed {
-    clickable(
-        indication = null,
-        interactionSource = remember { MutableInteractionSource() }
-    ) { onClick() }
-}
+private fun Modifier.clickableNoIndication(onClick: () -> Unit): Modifier = composed { clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() } }

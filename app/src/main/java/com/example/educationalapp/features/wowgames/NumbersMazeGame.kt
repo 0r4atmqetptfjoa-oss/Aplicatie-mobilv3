@@ -3,6 +3,9 @@ package com.example.educationalapp.features.wowgames
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.media.AudioAttributes
+import android.media.MediaPlayer
+import android.media.SoundPool
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.compose.animation.core.animateFloatAsState
@@ -36,7 +39,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import com.example.educationalapp.common.LocalSoundManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
@@ -50,15 +52,11 @@ import com.example.educationalapp.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.cancel
 import java.util.Locale
 import kotlin.math.*
-import kotlin.coroutines.resume
 import kotlin.random.Random
 
 // -------------------- DATA --------------------
@@ -152,112 +150,163 @@ data class MazeParticle(
 
 // -------------------- AUDIO (PREMIUM) --------------------
 
-class MathAudioManager(
-    private val context: Context,
-    private val soundManager: com.example.educationalapp.di.SoundManager
-) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-
+class MathAudioManager(private val context: Context) {
+    private val soundPool: SoundPool
+    private var voicePlayer: MediaPlayer? = null
+    
+    // Background Music Player (local control for ducking)
+    private var musicPlayer: MediaPlayer? = null
+    
     private var tts: TextToSpeech? = null
     private var ttsReady = false
 
-    private var voiceJob: Job? = null
-    private val voiceQueue = ArrayDeque<Pair<String, String>>()
+    private var isVoicePlaying: Boolean = false
+    private var pendingVoice: Pair<String, String>? = null
+    
+    // Ducking animation
+    private val scope = CoroutineScope(Dispatchers.Main)
+    private var duckJob: Job? = null
 
-    // Raw resources resolved by name (0 if missing)
-    val sfxBounce: Int = soundManager.rawResId("math_sfx_bounce")
-    val sfxPop: Int = soundManager.rawResId("sfx_bubble_pop")
-    val sfxWin: Int = soundManager.rawResId("math_sfx_win_short")
-    val sfxWrong: Int = soundManager.rawResId("math_sfx_wrong")
-    val sfxWhoosh: Int = soundManager.rawResId("math_sfx_whoosh")
+    val sfxBounce: Int
+    val sfxPop: Int
+    val sfxWin: Int
+    val sfxWrong: Int
+    val sfxWhoosh: Int
 
     init {
+        val attrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_GAME)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        soundPool = SoundPool.Builder().setMaxStreams(12).setAudioAttributes(attrs).build()
+
+        fun load(name: String): Int {
+            val id = context.resources.getIdentifier(name, "raw", context.packageName)
+            return if (id != 0) soundPool.load(context, id, 1) else 0
+        }
+
+        sfxBounce = load("math_sfx_bounce")
+        sfxPop = load("sfx_bubble_pop")
+        sfxWin = load("math_sfx_win_short")
+        sfxWrong = load("math_sfx_wrong")
+        sfxWhoosh = load("math_sfx_whoosh")
+
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale("ro", "RO")
                 tts?.setSpeechRate(0.9f)
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) { isVoicePlaying = true }
+                    override fun onDone(utteranceId: String?) { handleVoiceEnd() }
+                    @Deprecated("Deprecated in Java") override fun onError(utteranceId: String?) { handleVoiceEnd() }
+                    override fun onError(utteranceId: String?, errorCode: Int) { handleVoiceEnd() }
+                })
                 ttsReady = true
             }
         }
     }
 
     fun startMusic() {
-        val musicRes = soundManager.rawResId("math_bg_music").takeIf { it != 0 }
-        soundManager.enterGameMode(musicRes, autoPlay = true, startVolume = 0.40f)
+        if (musicPlayer == null) {
+            val resId = context.resources.getIdentifier("math_bg_music", "raw", context.packageName)
+            if (resId != 0) {
+                musicPlayer = MediaPlayer.create(context, resId).apply {
+                    isLooping = true
+                    setVolume(0.4f, 0.4f) // Base volume
+                    start()
+                }
+            }
+        }
     }
 
-    fun playSFX(soundResId: Int, rate: Float = 1.0f, vol: Float = 1.0f) {
-        if (soundResId != 0) soundManager.playSound(soundResId, rate = rate, volume = vol, duckMusic = false)
+    private fun setMusicVolume(vol: Float) {
+        musicPlayer?.setVolume(vol, vol)
+    }
+
+    fun playSFX(soundId: Int, rate: Float = 1.0f, vol: Float = 1.0f) {
+        if (soundId != 0) soundPool.play(soundId, vol, vol, 1, 0, rate)
     }
 
     fun playVoice(audioName: String, fallbackText: String, interrupt: Boolean = true) {
-        if (interrupt) {
-            voiceQueue.clear()
-            voiceJob?.cancel()
-            voiceJob = null
-            soundManager.stopVoice()
-        } else {
-            if (voiceJob?.isActive == true) {
-                voiceQueue.addLast(audioName to fallbackText)
-                return
-            }
+        if (!interrupt && isVoicePlaying) {
+            pendingVoice = audioName to fallbackText
+            return
         }
 
-        voiceQueue.addLast(audioName to fallbackText)
-        voiceJob = scope.launch {
-            while (voiceQueue.isNotEmpty() && isActive) {
-                val (name, text) = voiceQueue.removeFirst()
-                val resId = soundManager.rawResId(name)
-                if (resId != 0) {
-                    soundManager.playVoiceAndWait(resId, duckMusic = true)
-                } else {
-                    speakFallback(text)
+        if (interrupt) {
+            pendingVoice = null
+            stopVoice()
+        }
+
+        // --- AUDIO DUCKING START ---
+        setMusicVolume(0.05f) // Drop music to 5%
+        // ---------------------------
+
+        val resId = context.resources.getIdentifier(audioName, "raw", context.packageName)
+        if (resId != 0) {
+            try {
+                voicePlayer = MediaPlayer.create(context, resId)
+                isVoicePlaying = true
+                voicePlayer?.setOnCompletionListener {
+                    it.release()
+                    voicePlayer = null
+                    handleVoiceEnd()
                 }
+                voicePlayer?.start()
+            } catch (e: Exception) {
+                handleVoiceEnd() // Restore music if fail
+                e.printStackTrace()
+            }
+        } else {
+            if (ttsReady) {
+                tts?.speak(fallbackText, TextToSpeech.QUEUE_FLUSH, null, "math_tts")
+            } else {
+                handleVoiceEnd() // No voice -> restore music immediately
             }
         }
     }
 
-    private suspend fun speakFallback(text: String) {
-        if (!ttsReady || text.isBlank()) return
+    private fun stopVoice() {
+        try {
+            voicePlayer?.stop()
+            voicePlayer?.release()
+        } catch (_: Exception) {}
+        voicePlayer = null
+        tts?.stop()
+        isVoicePlaying = false
+    }
 
-        suspendCancellableCoroutine<Unit> { cont ->
-            val id = "maze_tts_${System.nanoTime()}"
-            val listener = object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) {}
-
-                override fun onDone(utteranceId: String?) {
-                    if (utteranceId == id && cont.isActive) cont.resume(Unit) {}
-                }
-
-                @Deprecated("Deprecated in Java")
-                override fun onError(utteranceId: String?) {
-                    if (utteranceId == id && cont.isActive) cont.resume(Unit) {}
-                }
-
-                override fun onError(utteranceId: String?, errorCode: Int) {
-                    if (utteranceId == id && cont.isActive) cont.resume(Unit) {}
+    private fun handleVoiceEnd() {
+        isVoicePlaying = false
+        
+        // Dacă avem coadă, redăm următorul (muzica rămâne jos)
+        val next = pendingVoice
+        pendingVoice = null
+        if (next != null) {
+            // Rulează pe UI thread pt siguranță
+            scope.launch {
+                playVoice(next.first, next.second, interrupt = true)
+            }
+        } else {
+            // Nu mai e nimic de zis -> Ridicăm muzica înapoi
+            scope.launch {
+                // Fade in lent
+                val steps = 10
+                for (i in 1..steps) {
+                    val v = 0.05f + (0.35f * (i.toFloat() / steps)) // Target 0.4f
+                    setMusicVolume(v)
+                    delay(50)
                 }
             }
-
-            tts?.setOnUtteranceProgressListener(listener)
-            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
-            cont.invokeOnCancellation { tts?.stop() }
         }
     }
 
     fun release() {
-        voiceQueue.clear()
-        voiceJob?.cancel()
-        voiceJob = null
-
-        soundManager.stopVoice()
-        soundManager.exitGameMode()
-
+        soundPool.release()
+        voicePlayer?.release()
+        musicPlayer?.release()
         tts?.stop()
         tts?.shutdown()
-        tts = null
-
-        scope.cancel()
     }
 }
 
@@ -268,9 +317,7 @@ fun NumbersMazeGame(onBack: () -> Unit) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
-    val soundManager = LocalSoundManager.current
-
-    val audio = remember { MathAudioManager(context, soundManager) }
+    val audio = remember { MathAudioManager(context) }
 
     val bgImage = painterResource(id = R.drawable.bg_game_math)
     val bubbleBase = ImageBitmap.imageResource(id = R.drawable.img_bubble_glossy)

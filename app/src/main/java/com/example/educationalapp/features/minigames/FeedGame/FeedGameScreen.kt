@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.educationalapp.R
 import kotlin.math.roundToInt
 
@@ -29,7 +28,7 @@ fun FeedGameScreen(
     viewModel: FeedGameViewModel = hiltViewModel(),
     onBack: () -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsState()
     
     val density = LocalDensity.current
     val config = LocalConfiguration.current

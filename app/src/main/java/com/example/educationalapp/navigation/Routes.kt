@@ -2,56 +2,35 @@ package com.example.educationalapp.navigation
 
 import kotlinx.serialization.Serializable
 
-// --- Ecrane Principale ---
+// --- Rute Principale ---
 @Serializable object IntroRoute
 @Serializable object MainMenuRoute
-@Serializable object GamesMenuRoute
 @Serializable object SettingsRoute
-@Serializable object PaywallRoute
 @Serializable object ParentalGateRoute
-@Serializable object WowGamesRoute
-
-// --- Meniuri Secundare ---
-@Serializable object InstrumentsMenuRoute
-@Serializable object SongsMenuRoute
-@Serializable object StoriesMenuRoute
+@Serializable object GamesMenuRoute
 @Serializable object SoundsMenuRoute
+@Serializable object PaywallRoute
 
-// --- Sub-meniuri Sunete ---
-@Serializable object WildSoundsRoute
-@Serializable object MarineSoundsRoute
-@Serializable object FarmSoundsRoute
-@Serializable object BirdSoundsRoute
-@Serializable object BirdSpritesRoute
-@Serializable object VehicleSoundsRoute
-
-// --- Instrumente Sunete ---
-@Serializable object PianoSoundsRoute
-@Serializable object XylofonSoundsRoute
-@Serializable object GuitarSoundsRoute
-@Serializable object HarpaSoundsRoute
-@Serializable object SaxofonSoundsRoute
-@Serializable object TobeSoundsRoute
-
-// --- Rute pentru Cântece ---
-@Serializable object Song1Route
-@Serializable object Song2Route
-@Serializable object Song3Route
-@Serializable object Song4Route
-
-// --- JOCURI ---
-@Serializable object AlphabetQuizRoute
+// --- Rute Jocuri Învățare ---
 @Serializable object AlphabetGraphRoute
+@Serializable object AlphabetQuizRoute
+@Serializable object AlphabetTracingRoute
 
-@Serializable object PeekABooRoute
 @Serializable object ColorsRoute
 @Serializable object ShapesRoute
+@Serializable object PeekABooRoute
 @Serializable object PuzzleRoute
-@Serializable object CookingRoute
 @Serializable object MagicGardenRoute
+
+// --- Rute Mini-Games ---
+@Serializable object CookingRoute
 @Serializable object MemoryRoute
 @Serializable object BalloonPopRoute
 @Serializable object AnimalBandRoute
+@Serializable object EggSurpriseRoute
+@Serializable object FeedMonsterRoute
+
+// --- Rute Jocuri Vechi (Legacy) ---
 @Serializable object HiddenObjectsRoute
 @Serializable object SortingRoute
 @Serializable object InstrumentsGameRoute
@@ -61,20 +40,37 @@ import kotlinx.serialization.Serializable
 @Serializable object MazeRoute
 @Serializable object ShadowMatchRoute
 @Serializable object AnimalSortingRoute
-@Serializable object CodingRoute
-@Serializable object EggSurpriseRoute
-@Serializable object FeedMonsterRoute
 
-// --- PREMIUM MINI-GAMES ---
+// --- Rute Noi PREMIUM ---
 @Serializable object ColorMixingRoute
 @Serializable object ShapeTrainRoute
 @Serializable object HabitatRescueRoute
 @Serializable object MusicalPatternRoute
 @Serializable object WeatherDressRoute
 
-// --- WOW GAMES (Individually) ---
+// --- Rute Secundare ---
+@Serializable object InstrumentsMenuRoute
+@Serializable object StoriesMenuRoute
+@Serializable object SongsMenuRoute
+
+// Sunete Instrumente
+@Serializable object PianoSoundsRoute
+@Serializable object XylofonSoundsRoute
+@Serializable object GuitarSoundsRoute
+@Serializable object HarpaSoundsRoute
+@Serializable object SaxofonSoundsRoute
+@Serializable object TobeSoundsRoute
+
+// Cântece
+@Serializable object Song1Route
+@Serializable object Song2Route
+@Serializable object Song3Route
+@Serializable object Song4Route
+
+// Wow Games
 @Serializable object AlphabetAdventureRoute
 @Serializable object NumbersMazeRoute
 @Serializable object BuildFarmRoute
 @Serializable object ColourRainbowRoute
 @Serializable object InteractiveStoryRoute
+@Serializable object WowGamesRoute
