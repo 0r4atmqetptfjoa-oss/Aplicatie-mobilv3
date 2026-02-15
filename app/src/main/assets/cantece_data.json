@@ -1,0 +1,13 @@
+{
+    "asset": "cantece",
+    "anim_type": "BTN_CLICK",
+    "specs": {
+        "frames": 24,
+        "fps": 30,
+        "loop": "LOOP",
+        "cols": 5,
+        "rows": 5,
+        "w": 512,
+        "h": 512
+    }
+}

@@ -1,0 +1,13 @@
+{
+    "asset": "Titlu",
+    "anim_type": "TITLE_FLOAT_LOOP",
+    "specs": {
+        "frames": 60,
+        "fps": 30,
+        "loop": "LOOP",
+        "cols": 8,
+        "rows": 8,
+        "w": 1280,
+        "h": 720
+    }
+}

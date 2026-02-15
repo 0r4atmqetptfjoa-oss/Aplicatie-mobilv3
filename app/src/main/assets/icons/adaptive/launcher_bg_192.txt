@@ -1,0 +1,1 @@
+Placeholder for the adaptive icon background (launcher_bg_192.png)
